@@ -33,6 +33,7 @@
 				<artifactId>maven-clean-plugin</artifactId>
 				<version>3.2.0</version>
 			</plugin>
+			
 			<plugin>
 				<groupId>org.mule.tools.maven</groupId>
 				<artifactId>mule-maven-plugin</artifactId>
@@ -45,8 +46,28 @@
 							<artifactId>mysql-connector-java</artifactId>
 						</sharedLibrary>
 					</sharedLibraries>
+					<cloudhub2Deployment>
+						<uri>https://anypoint.mulesoft.com</uri>
+						<provider>MC</provider>
+						<environment>${anypoint.environment}</environment>
+						<target>${anypoint.target}</target>
+						<muleVersion>${muleVersion}</muleVersion>
+						<connectedAppClientId>${env.CONNECTED_APP_CLIENT_ID}</connectedAppClientId>
+						<connectedAppClientSecret>${env.CONNECTED_APP_CLIENT_SECRET}</connectedAppClientSecret>
+						<connectedAppGrantType>client_credentials</connectedAppGrantType>
+						<applicationName>${anypoint.appName}</applicationName>
+						<businessGroupId>${anypoint.orgId}</businessGroupId>
+						<replicas>1</replicas>
+						<vCores>0.1</vCores>
+						<skipDeploymentVerification>false</skipDeploymentVerification>
+						<properties>
+							<secure.key>${secure.key}</secure.key>
+							<env>${anypoint.environment}</env>
+						</properties>
+					</cloudhub2Deployment>
 				</configuration>
 			</plugin>
+			
 			<plugin>
 				<groupId>com.mulesoft.munit.tools</groupId>
 				<artifactId>munit-maven-plugin</artifactId>
@@ -69,28 +90,6 @@
 						</formats>
 					</coverage>
 				</configuration>
-			</plugin>
-			<plugin>
-    			<groupId>org.mule.tools.maven</groupId>
-    			<artifactId>mule-maven-plugin</artifactId>
-    			<version>${mule.maven.plugin.version}</version>
-    			<extensions>true</extensions>
-    			<configuration>
-        			<cloudhub2Deployment>
-            			<uri>https://anypoint.mulesoft.com</uri>
-            			<provider>MC</provider>
-           		 		<environment>Sandbox</environment> <!-- Change to your environment name -->
-            			<target>Cloudhub-US-East-2</target> <!-- Change to your CH2.0 target/region name -->
-            			<muleVersion>4.8.0</muleVersion> <!-- Match your Mule version -->
-            			<connectedAppClientId>${env.CONNECTED_APP_CLIENT_ID}</connectedAppClientId>
-            			<connectedAppClientSecret>${env.CONNECTED_APP_CLIENT_SECRET}</connectedAppClientSecret>
-            			<connectedAppGrantType>client_credentials</connectedAppGrantType>
-            			<applicationName>order-system-api-sapi</applicationName> <!-- Must be globally unique in CH 2.0 -->
-            			<replicas>1</replicas>
-            			<vCores>0.1</vCores>
-            			<skipDeploymentVerification>false</skipDeploymentVerification>
-        			</cloudhub2Deployment>
-    			</configuration>
 			</plugin>
 		</plugins>
 	</build>
