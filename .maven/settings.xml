@@ -21,18 +21,37 @@
 
     <profiles>
         <profile>
-            <id>allow-public-repositories</id>
+            <id>mulesoft-public-repositories</id>
             <activation>
                 <activeByDefault>true</activeByDefault>
             </activation>
             <repositories>
                 <repository>
-                    <id>central</id>
-                    <url>https://repo.maven.apache.org/maven2</url>
-                    <releases><enabled>true</enabled></releases>
-                    <snapshots><enabled>true</enabled></snapshots>
+                    <id>mulesoft-public</id>
+                    <name>MuleSoft Public Repository</name>
+                    <url>https://repository-master.mulesoft.org/nexus/content/groups/public/</url>
+                    <layout>default</layout>
+                    <releases>
+                        <enabled>true</enabled>
+                    </releases>
+                    <snapshots>
+                        <enabled>true</enabled>
+                    </snapshots>
                 </repository>
             </repositories>
+            <pluginRepositories>
+                <pluginRepository>
+                    <id>mulesoft-public-plugins</id>
+                    <name>MuleSoft Public Plugins</name>
+                    <url>https://repository-master.mulesoft.org/nexus/content/groups/public/</url>
+                    <releases>
+                        <enabled>true</enabled>
+                    </releases>
+                    <snapshots>
+                        <enabled>true</enabled>
+                    </snapshots>
+                </pluginRepository>
+            </pluginRepositories>
         </profile>
     </profiles>
 
