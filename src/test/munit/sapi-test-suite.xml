@@ -1,0 +1,3095 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:db="http://www.mulesoft.org/schema/mule/db"
+      xmlns:munit="http://www.mulesoft.org/schema/mule/munit"
+      xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+      xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd 
+          http://www.mulesoft.org/schema/mule/core
+          http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+          http://www.mulesoft.org/schema/mule/db
+          http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+          http://www.mulesoft.org/schema/mule/munit
+          http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+          http://www.mulesoft.org/schema/mule/munit-tools
+          http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+
+    <munit:config name="system-api-test-case-01"/>
+
+    <munit:test
+        name="post-order-success-test"
+        description="POST /orders success: product exists, stock is sufficient, stock is deducted, order is inserted, and HTTP 201 is returned">
+
+        <munit:behavior>
+
+            <!--
+                Actual processor:
+                db:select
+                doc:name="Select - Fetch Product Details"
+                target="dbProductResult"
+
+                The flow reads vars.dbProductResult, therefore the mock must
+                populate the same target variable.
+            -->
+            <munit-tools:mock-when
+                processor="db:select"
+                doc:name="Mock Select Fetch Product Details">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Select - Fetch Product Details']"/>
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable
+                            key="#['dbProductResult']"
+                            value="#[[{
+                                UNIT_PRICE: 29.99,
+                                STOCK_QUANTITY: 100
+                            }]]"/>
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+            <!--
+                Actual processor:
+                db:update
+                doc:name="Update - Deduct Stock"
+                target="dbStockUpdateResult"
+            -->
+            <munit-tools:mock-when
+                processor="db:update"
+                doc:name="Mock Update Deduct Stock">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Update - Deduct Stock']"/>
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable
+                            key="#['dbStockUpdateResult']"
+                            value="#[1]"/>
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+            <!--
+                Actual processor:
+                db:insert
+                doc:name="Insert - Orders Table"
+                target="dbInsertResult"
+            -->
+            <munit-tools:mock-when
+                processor="db:insert"
+                doc:name="Mock Insert Orders Table">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Insert - Orders Table']"/>
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable
+                            key="#['dbInsertResult']"
+                            value="#[1]"/>
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+        </munit:behavior>
+
+        <munit:execution>
+
+            <munit:set-event doc:name="Set Valid POST Order Event">
+
+                <munit:payload
+                    value="#[output application/json
+                    ---
+                    {
+                        customerName: 'John Doe',
+                        customerEmail: 'john.doe@example.com',
+                        productCode: 'PROD001',
+                        quantity: 2,
+                        shippingAddressLine1: '123 Main St',
+                        shippingCity: 'New York',
+                        shippingState: 'NY',
+                        shippingPostalCode: '10001',
+                        shippingCountry: 'USA'
+                    }]"
+                    mediaType="application/json"
+                    encoding="UTF-8"/>
+
+            </munit:set-event>
+
+            <flow-ref
+                name="post:\orders:application\json:oms-order-system-api-spec-config"
+                doc:name="Call POST Orders Flow"/>
+
+        </munit:execution>
+
+        <munit:validation>
+
+            <munit-tools:assert-that
+                expression="#[vars.httpStatus]"
+                is="#[MunitTools::equalTo(201)]"
+                message="Expected vars.httpStatus to be 201"
+                doc:name="Assert HTTP Status 201"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.status]"
+                is="#[MunitTools::equalTo('SUCCESS')]"
+                message="Expected response status to be SUCCESS"
+                doc:name="Assert Status SUCCESS"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.message]"
+                is="#[MunitTools::equalTo('Order created successfully')]"
+                message="Expected successful order creation message"
+                doc:name="Assert Success Message"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.orderId]"
+                is="#[MunitTools::notNullValue()]"
+                message="Expected generated orderId to be present"
+                doc:name="Assert Order ID Present"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.orderId startsWith 'ORD']"
+                is="#[MunitTools::equalTo(true)]"
+                message="Expected generated orderId to start with ORD"
+                doc:name="Assert Order ID Prefix"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.productCode]"
+                is="#[MunitTools::equalTo('PROD001')]"
+                message="Expected response productCode to be PROD001"
+                doc:name="Assert Product Code"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.quantity]"
+                is="#[MunitTools::equalTo(2)]"
+                message="Expected response quantity to be 2"
+                doc:name="Assert Quantity"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.unitPrice]"
+                is="#[MunitTools::equalTo(29.99)]"
+                message="Expected response unitPrice to be 29.99"
+                doc:name="Assert Unit Price"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.orderTotal]"
+                is="#[MunitTools::equalTo(59.98)]"
+                message="Expected response orderTotal to be 59.98"
+                doc:name="Assert Order Total"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.correlationId]"
+                is="#[MunitTools::notNullValue()]"
+                message="Expected correlationId to be present"
+                doc:name="Assert Correlation ID Present"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.timestamp]"
+                is="#[MunitTools::notNullValue()]"
+                message="Expected timestamp to be present"
+                doc:name="Assert Timestamp Present"/>
+
+            <munit-tools:verify-call
+                processor="db:select"
+                times="1"
+                doc:name="Verify Product Select Called Once">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Select - Fetch Product Details']"/>
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+            <munit-tools:verify-call
+                processor="db:update"
+                times="1"
+                doc:name="Verify Stock Update Called Once">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Update - Deduct Stock']"/>
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+            <munit-tools:verify-call
+                processor="db:insert"
+                times="1"
+                doc:name="Verify Order Insert Called Once">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Insert - Orders Table']"/>
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+        </munit:validation>
+
+    </munit:test>
+    
+        <!-- ===========================================================
+         Test Case 02: POST /orders - Invalid Product Code
+         =========================================================== -->
+
+    <munit:test
+        name="post-order-invalid-product-test"
+        description="POST /orders invalid product: product query returns an empty list and APP:INSUFFICIENT_STOCK is handled as HTTP 400">
+
+        <munit:behavior>
+
+            <!--
+                Actual processor:
+                db:select
+                doc:name="Select - Fetch Product Details"
+                target="dbProductResult"
+
+                An empty list represents an invalid/non-existent product.
+            -->
+            <munit-tools:mock-when
+                processor="db:select"
+                doc:name="Mock Product Not Found">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Select - Fetch Product Details']"/>
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable
+                            key="#['dbProductResult']"
+                            value="#[[]]"/>
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+        </munit:behavior>
+
+        <munit:execution>
+
+            <munit:set-event doc:name="Set Invalid Product Order Event">
+
+                <munit:payload
+                    value="#[output application/json
+                    ---
+                    {
+                        customerName: 'Jane Doe',
+                        customerEmail: 'jane@example.com',
+                        productCode: 'NONEXISTENT_CODE',
+                        quantity: 1,
+                        shippingAddressLine1: '456 Oak Avenue',
+                        shippingCity: 'Boston',
+                        shippingState: 'MA',
+                        shippingPostalCode: '02101',
+                        shippingCountry: 'USA'
+                    }]"
+                    mediaType="application/json"
+                    encoding="UTF-8"/>
+
+            </munit:set-event>
+
+            <!--
+                GlobalErrorHandler uses on-error-propagate.
+                The surrounding try catches the propagated error after
+                the error handler has created the expected error payload.
+            -->
+            <try doc:name="Execute POST Orders and Catch Error">
+
+                <flow-ref
+                    name="post:\orders:application\json:oms-order-system-api-spec-config"
+                    doc:name="Call POST Orders Flow"/>
+
+                <error-handler>
+                    <on-error-continue
+                        type="ANY"
+                        logException="false"
+                        enableNotifications="false"
+                        doc:name="Catch Expected Error"/>
+                </error-handler>
+
+            </try>
+
+        </munit:execution>
+
+        <munit:validation>
+
+            <munit-tools:assert-that
+                expression="#[vars.httpStatus]"
+                is="#[MunitTools::equalTo(400)]"
+                message="Expected vars.httpStatus to be 400 for an invalid product code"
+                doc:name="Assert HTTP Status 400"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.errorCode]"
+                is="#[MunitTools::equalTo('INSUFFICIENT_STOCK')]"
+                message="Expected errorCode to be INSUFFICIENT_STOCK"
+                doc:name="Assert Insufficient Stock Error Code"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.source]"
+                is="#[MunitTools::equalTo('DATABASE')]"
+                message="Expected error source to be DATABASE"
+                doc:name="Assert Error Source Database"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.orderId]"
+                is="#[MunitTools::notNullValue()]"
+                message="Expected the generated orderId to be present in the error response"
+                doc:name="Assert Order ID Present"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.orderId startsWith 'ORD']"
+                is="#[MunitTools::equalTo(true)]"
+                message="Expected generated orderId to start with ORD"
+                doc:name="Assert Order ID Prefix"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.errorMessage contains 'NONEXISTENT_CODE']"
+                is="#[MunitTools::equalTo(true)]"
+                message="Expected errorMessage to contain the invalid product code"
+                doc:name="Assert Error Message Contains Product Code"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.correlationId]"
+                is="#[MunitTools::notNullValue()]"
+                message="Expected correlationId to be present"
+                doc:name="Assert Correlation ID Present"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.timestamp]"
+                is="#[MunitTools::notNullValue()]"
+                message="Expected timestamp to be present"
+                doc:name="Assert Timestamp Present"/>
+
+            <!-- Product lookup must happen exactly once. -->
+            <munit-tools:verify-call
+                processor="db:select"
+                times="1"
+                doc:name="Verify Product Select Called Once">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Select - Fetch Product Details']"/>
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+            <!-- Stock must not be deducted for an invalid product. -->
+            <munit-tools:verify-call
+                processor="db:update"
+                times="0"
+                doc:name="Verify Stock Update Not Called">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Update - Deduct Stock']"/>
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+            <!-- Order must not be inserted for an invalid product. -->
+            <munit-tools:verify-call
+                processor="db:insert"
+                times="0"
+                doc:name="Verify Order Insert Not Called">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Insert - Orders Table']"/>
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+        </munit:validation>
+
+    </munit:test>
+    
+        <!-- ===========================================================
+         Test Case 03: POST /orders - Insufficient Stock
+         =========================================================== -->
+
+    <munit:test
+        name="post-order-insufficient-stock-test"
+        description="POST /orders insufficient stock: product exists but requested quantity exceeds available stock">
+
+        <munit:behavior>
+
+            <!--
+                Actual processor:
+                db:select
+                doc:name="Select - Fetch Product Details"
+                target="dbProductResult"
+
+                Product exists, but STOCK_QUANTITY is lower than
+                the requested order quantity.
+            -->
+            <munit-tools:mock-when
+                processor="db:select"
+                doc:name="Mock Product With Insufficient Stock">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Select - Fetch Product Details']"/>
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable
+                            key="#['dbProductResult']"
+                            value="#[[{
+                                UNIT_PRICE: 49.99,
+                                STOCK_QUANTITY: 1
+                            }]]"/>
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+        </munit:behavior>
+
+        <munit:execution>
+
+            <munit:set-event doc:name="Set Insufficient Stock Order Event">
+
+                <munit:payload
+                    value="#[output application/json
+                    ---
+                    {
+                        customerName: 'Alice Smith',
+                        customerEmail: 'alice@example.com',
+                        productCode: 'PROD001',
+                        quantity: 50,
+                        shippingAddressLine1: '789 Pine Road',
+                        shippingCity: 'Chicago',
+                        shippingState: 'IL',
+                        shippingPostalCode: '60601',
+                        shippingCountry: 'USA'
+                    }]"
+                    mediaType="application/json"
+                    encoding="UTF-8"/>
+
+            </munit:set-event>
+
+            <try doc:name="Execute POST Orders and Catch Insufficient Stock Error">
+
+                <flow-ref
+                    name="post:\orders:application\json:oms-order-system-api-spec-config"
+                    doc:name="Call POST Orders Flow"/>
+
+                <error-handler>
+                    <on-error-continue
+                        type="ANY"
+                        logException="false"
+                        enableNotifications="false"
+                        doc:name="Catch Expected Insufficient Stock Error"/>
+                </error-handler>
+
+            </try>
+
+        </munit:execution>
+
+        <munit:validation>
+
+            <munit-tools:assert-that
+                expression="#[vars.httpStatus]"
+                is="#[MunitTools::equalTo(400)]"
+                message="Expected vars.httpStatus to be 400 for insufficient stock"
+                doc:name="Assert HTTP Status 400"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.errorCode]"
+                is="#[MunitTools::equalTo('INSUFFICIENT_STOCK')]"
+                message="Expected errorCode to be INSUFFICIENT_STOCK"
+                doc:name="Assert Insufficient Stock Error Code"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.source]"
+                is="#[MunitTools::equalTo('DATABASE')]"
+                message="Expected error source to be DATABASE"
+                doc:name="Assert Error Source Database"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.orderId]"
+                is="#[MunitTools::notNullValue()]"
+                message="Expected generated orderId to be present in the error response"
+                doc:name="Assert Order ID Present"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.orderId startsWith 'ORD']"
+                is="#[MunitTools::equalTo(true)]"
+                message="Expected generated orderId to start with ORD"
+                doc:name="Assert Order ID Prefix"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.errorMessage contains 'PROD001']"
+                is="#[MunitTools::equalTo(true)]"
+                message="Expected errorMessage to contain product code PROD001"
+                doc:name="Assert Error Message Contains Product Code"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.correlationId]"
+                is="#[MunitTools::notNullValue()]"
+                message="Expected correlationId to be present"
+                doc:name="Assert Correlation ID Present"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.timestamp]"
+                is="#[MunitTools::notNullValue()]"
+                message="Expected timestamp to be present"
+                doc:name="Assert Timestamp Present"/>
+
+            <!-- Product lookup must execute exactly once. -->
+            <munit-tools:verify-call
+                processor="db:select"
+                times="1"
+                doc:name="Verify Product Select Called Once">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Select - Fetch Product Details']"/>
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+            <!-- Stock update must not execute when stock is insufficient. -->
+            <munit-tools:verify-call
+                processor="db:update"
+                times="0"
+                doc:name="Verify Stock Update Not Called">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Update - Deduct Stock']"/>
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+            <!-- Order insert must not execute when stock is insufficient. -->
+            <munit-tools:verify-call
+                processor="db:insert"
+                times="0"
+                doc:name="Verify Order Insert Not Called">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Insert - Orders Table']"/>
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+        </munit:validation>
+
+    </munit:test>
+    
+        <!-- ===========================================================
+         Test Case 04: POST /orders - DB Connectivity Error
+         =========================================================== -->
+
+    <munit:test
+        name="post-order-db-connectivity-error-test"
+        description="POST /orders DB connectivity error while fetching product details">
+
+        <munit:behavior>
+
+            <!--
+                Actual processor:
+                db:select
+                doc:name="Select - Fetch Product Details"
+                target="dbProductResult"
+
+                The mocked processor throws DB:CONNECTIVITY before
+                the product and stock validation can execute.
+            -->
+            <munit-tools:mock-when
+    			processor="db:select"
+    			doc:name="Mock Product Select DB Connectivity Error">
+
+    			<munit-tools:with-attributes>
+        			<munit-tools:with-attribute
+            			attributeName="#['doc:name']"
+            			whereValue="#['Select - Fetch Product Details']"/>
+    				</munit-tools:with-attributes>
+
+    					<munit-tools:then-return>
+        			<munit-tools:error typeId="DB:CONNECTIVITY"/>
+    			</munit-tools:then-return>
+
+			</munit-tools:mock-when>
+
+        </munit:behavior>
+
+        <munit:execution>
+
+            <munit:set-event doc:name="Set POST Order DB Error Event">
+
+                <munit:payload
+                    value="#[output application/json
+                    ---
+                    {
+                        customerName: 'Bob Brown',
+                        customerEmail: 'bob@example.com',
+                        productCode: 'PROD002',
+                        quantity: 3,
+                        shippingAddressLine1: '321 Elm Street',
+                        shippingCity: 'Houston',
+                        shippingState: 'TX',
+                        shippingPostalCode: '77001',
+                        shippingCountry: 'USA'
+                    }]"
+                    mediaType="application/json"
+                    encoding="UTF-8"/>
+
+            </munit:set-event>
+
+            <try doc:name="Execute POST Orders and Catch DB Error">
+
+                <flow-ref
+                    name="post:\orders:application\json:oms-order-system-api-spec-config"
+                    doc:name="Call POST Orders Flow"/>
+
+                <error-handler>
+                    <on-error-continue
+                        type="ANY"
+                        logException="false"
+                        enableNotifications="false"
+                        doc:name="Catch Expected DB Connectivity Error"/>
+                </error-handler>
+
+            </try>
+
+        </munit:execution>
+
+        <munit:validation>
+
+            <munit-tools:assert-that
+                expression="#[vars.httpStatus]"
+                is="#[MunitTools::equalTo(503)]"
+                message="Expected vars.httpStatus to be 503 for DB connectivity error"
+                doc:name="Assert HTTP Status 503"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.errorCode]"
+                is="#[MunitTools::equalTo('DB_CONNECTIVITY_ERROR')]"
+                message="Expected errorCode to be DB_CONNECTIVITY_ERROR"
+                doc:name="Assert DB Connectivity Error Code"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.errorMessage]"
+                is="#[MunitTools::equalTo('Unable to connect to the orders database')]"
+                message="Expected database connectivity error message"
+                doc:name="Assert DB Connectivity Error Message"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.source]"
+                is="#[MunitTools::equalTo('DATABASE')]"
+                message="Expected error source to be DATABASE"
+                doc:name="Assert Error Source Database"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.orderId]"
+                is="#[MunitTools::notNullValue()]"
+                message="Expected generated orderId to be present"
+                doc:name="Assert Order ID Present"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.orderId startsWith 'ORD']"
+                is="#[MunitTools::equalTo(true)]"
+                message="Expected generated orderId to start with ORD"
+                doc:name="Assert Order ID Prefix"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.correlationId]"
+                is="#[MunitTools::notNullValue()]"
+                message="Expected correlationId to be present"
+                doc:name="Assert Correlation ID Present"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.timestamp]"
+                is="#[MunitTools::notNullValue()]"
+                message="Expected timestamp to be present"
+                doc:name="Assert Timestamp Present"/>
+
+            <!-- The product select must execute exactly once. -->
+            <munit-tools:verify-call
+                processor="db:select"
+                times="1"
+                doc:name="Verify Product Select Called Once">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Select - Fetch Product Details']"/>
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+            <!-- Stock must not be updated after DB select failure. -->
+            <munit-tools:verify-call
+                processor="db:update"
+                times="0"
+                doc:name="Verify Stock Update Not Called">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Update - Deduct Stock']"/>
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+            <!-- Order must not be inserted after DB select failure. -->
+            <munit-tools:verify-call
+                processor="db:insert"
+                times="0"
+                doc:name="Verify Order Insert Not Called">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Insert - Orders Table']"/>
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+        </munit:validation>
+
+    </munit:test>
+    
+    
+        <!-- ===========================================================
+         Test Case 05: POST /orders - Order Insert Failure
+         =========================================================== -->
+
+    <munit:test
+        name="post-order-db-query-execution-insert-test"
+        description="POST /orders insert failure: product lookup and stock deduction succeed, but order insert throws DB:QUERY_EXECUTION">
+
+        <munit:behavior>
+
+            <!--
+                Product exists and sufficient stock is available.
+
+                Actual processor:
+                db:select
+                doc:name="Select - Fetch Product Details"
+                target="dbProductResult"
+            -->
+            <munit-tools:mock-when
+                processor="db:select"
+                doc:name="Mock Product Select Success for Insert Failure">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Select - Fetch Product Details']"/>
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable
+                            key="#['dbProductResult']"
+                            value="#[[{
+                                UNIT_PRICE: 19.99,
+                                STOCK_QUANTITY: 500
+                            }]]"/>
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+            <!--
+                Stock deduction succeeds.
+
+                Actual processor:
+                db:update
+                doc:name="Update - Deduct Stock"
+                target="dbStockUpdateResult"
+            -->
+            <munit-tools:mock-when
+                processor="db:update"
+                doc:name="Mock Stock Deduction Success for Insert Failure">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Update - Deduct Stock']"/>
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable
+                            key="#['dbStockUpdateResult']"
+                            value="#[1]"/>
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+            <!--
+                Order insert throws DB:QUERY_EXECUTION.
+
+                Do not add description here. The installed MUnit
+                schema does not allow description on munit-tools:error.
+            -->
+            <munit-tools:mock-when
+                processor="db:insert"
+                doc:name="Mock Order Insert Query Execution Error">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Insert - Orders Table']"/>
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+                    <munit-tools:error typeId="DB:QUERY_EXECUTION"/>
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+        </munit:behavior>
+
+        <munit:execution>
+
+            <munit:set-event doc:name="Set POST Order Insert Failure Event">
+
+                <munit:payload
+                    value="#[output application/json
+                    ---
+                    {
+                        customerName: 'Carol White',
+                        customerEmail: 'carol@example.com',
+                        productCode: 'PROD003',
+                        quantity: 1,
+                        shippingAddressLine1: '654 Maple Avenue',
+                        shippingCity: 'Seattle',
+                        shippingState: 'WA',
+                        shippingPostalCode: '98101',
+                        shippingCountry: 'USA'
+                    }]"
+                    mediaType="application/json"
+                    encoding="UTF-8"/>
+
+            </munit:set-event>
+
+            <try doc:name="Execute POST Orders and Catch Insert Error">
+
+                <flow-ref
+                    name="post:\orders:application\json:oms-order-system-api-spec-config"
+                    doc:name="Call POST Orders Flow"/>
+
+                <error-handler>
+                    <on-error-continue
+                        type="ANY"
+                        logException="false"
+                        enableNotifications="false"
+                        doc:name="Catch Expected Insert Error"/>
+                </error-handler>
+
+            </try>
+
+        </munit:execution>
+
+        <munit:validation>
+
+            <!--
+                The mock cannot provide a duplicate-key description.
+                Therefore, the generic DB:QUERY_EXECUTION handler
+                is expected instead of ORDER_ALREADY_EXISTS.
+            -->
+            <munit-tools:assert-that
+                expression="#[vars.httpStatus]"
+                is="#[MunitTools::equalTo(500)]"
+                message="Expected HTTP status 500 for DB query execution error"
+                doc:name="Assert HTTP Status 500"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.errorCode]"
+                is="#[MunitTools::equalTo('DB_EXECUTION_ERROR')]"
+                message="Expected errorCode DB_EXECUTION_ERROR"
+                doc:name="Assert DB Execution Error Code"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.source]"
+                is="#[MunitTools::equalTo('DATABASE')]"
+                message="Expected error source DATABASE"
+                doc:name="Assert Error Source Database"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.orderId]"
+                is="#[MunitTools::notNullValue()]"
+                message="Expected generated orderId in the error response"
+                doc:name="Assert Order ID Present"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.orderId startsWith 'ORD']"
+                is="#[MunitTools::equalTo(true)]"
+                message="Expected generated orderId to start with ORD"
+                doc:name="Assert Order ID Prefix"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.errorMessage]"
+                is="#[MunitTools::notNullValue()]"
+                message="Expected database error message to be present"
+                doc:name="Assert Error Message Present"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.correlationId]"
+                is="#[MunitTools::notNullValue()]"
+                message="Expected correlationId to be present"
+                doc:name="Assert Correlation ID Present"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.timestamp]"
+                is="#[MunitTools::notNullValue()]"
+                message="Expected timestamp to be present"
+                doc:name="Assert Timestamp Present"/>
+
+            <!-- Product lookup must execute once. -->
+            <munit-tools:verify-call
+                processor="db:select"
+                times="1"
+                doc:name="Verify Product Select Called Once">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Select - Fetch Product Details']"/>
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+            <!-- Stock deduction must execute once. -->
+            <munit-tools:verify-call
+                processor="db:update"
+                times="1"
+                doc:name="Verify Stock Deduction Called Once">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Update - Deduct Stock']"/>
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+            <!-- Order insert must be attempted once. -->
+            <munit-tools:verify-call
+                processor="db:insert"
+                times="1"
+                doc:name="Verify Order Insert Called Once">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Insert - Orders Table']"/>
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+        </munit:validation>
+
+    </munit:test>
+    
+        <!-- ===========================================================
+         Test Case 06: GET /orders/{orderId} - Success
+         =========================================================== -->
+
+    <munit:test
+        name="get-order-by-id-success-test"
+        description="GET /orders/{orderId} success: database returns an order and the flow maps it to the expected JSON response">
+
+        <munit:behavior>
+
+            <!--
+                Actual processor:
+                db:select
+                doc:name="Select - Orders Table"
+                target="dbSelectResult"
+
+                The actual flow reads the first item using:
+                vars.dbSelectResult[0]
+            -->
+            <munit-tools:mock-when
+                processor="db:select"
+                doc:name="Mock Select Orders Table Success">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Select - Orders Table']"/>
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable
+                            key="#['dbSelectResult']"
+                            value="#[[{
+                                ORDER_ID: 'ORD20261010120000001',
+                                CUSTOMER_ID: 'CUST001',
+                                CUSTOMER_NAME: 'John Doe',
+                                CUSTOMER_EMAIL: 'john.doe@example.com',
+                                ORDER_DATE: |2026-10-10|,
+                                ORDER_STATUS: 'NEW',
+                                PRODUCT_CODE: 'PROD001',
+                                QUANTITY: 2,
+                                UNIT_PRICE: 29.99,
+                                ORDER_TOTAL: 59.98,
+                                CURRENCY: 'USD',
+                                SHIPPING_ADDRESS_LINE1: '123 Main St',
+                                SHIPPING_ADDRESS_LINE2: null,
+                                SHIPPING_CITY: 'New York',
+                                SHIPPING_STATE: 'NY',
+                                SHIPPING_POSTAL_CODE: '10001',
+                                SHIPPING_COUNTRY: 'USA',
+                                CREATED_TIMESTAMP: |2026-10-10T12:00:00|,
+                                UPDATED_TIMESTAMP: |2026-10-10T12:00:00|
+                            }]]"/>
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+        </munit:behavior>
+
+        <munit:execution>
+
+            <!--
+                The actual flow reads:
+                attributes.uriParams.orderId
+            -->
+            <munit:set-event doc:name="Set GET Order Request Event">
+
+                <munit:attributes
+                    value="#[{
+                        uriParams: {
+                            orderId: 'ORD20261010120000001'
+                        }
+                    }]"
+                    mediaType="application/java"/>
+
+            </munit:set-event>
+
+            <flow-ref
+                name="get:\orders\(orderId):oms-order-system-api-spec-config"
+                doc:name="Call GET Order by ID Flow"/>
+
+        </munit:execution>
+
+        <munit:validation>
+
+            <!-- The URI parameter must be stored in vars.orderId. -->
+            <munit-tools:assert-that
+                expression="#[vars.orderId]"
+                is="#[MunitTools::equalTo('ORD20261010120000001')]"
+                message="Expected vars.orderId to match the URI parameter"
+                doc:name="Assert Order ID Variable"/>
+
+            <!-- Validate the transformed response fields. -->
+            <munit-tools:assert-that
+                expression="#[payload.orderId]"
+                is="#[MunitTools::equalTo('ORD20261010120000001')]"
+                message="Expected response orderId to match the requested order"
+                doc:name="Assert Response Order ID"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.customerId]"
+                is="#[MunitTools::equalTo('CUST001')]"
+                message="Expected customerId to be CUST001"
+                doc:name="Assert Customer ID"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.customerName]"
+                is="#[MunitTools::equalTo('John Doe')]"
+                message="Expected customerName to be John Doe"
+                doc:name="Assert Customer Name"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.customerEmail]"
+                is="#[MunitTools::equalTo('john.doe@example.com')]"
+                message="Expected customerEmail to match the database result"
+                doc:name="Assert Customer Email"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.orderDate]"
+                is="#[MunitTools::equalTo('2026-10-10')]"
+                message="Expected orderDate to be formatted as yyyy-MM-dd"
+                doc:name="Assert Order Date"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.orderStatus]"
+                is="#[MunitTools::equalTo('NEW')]"
+                message="Expected orderStatus to be NEW"
+                doc:name="Assert Order Status"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.productCode]"
+                is="#[MunitTools::equalTo('PROD001')]"
+                message="Expected productCode to be PROD001"
+                doc:name="Assert Product Code"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.quantity]"
+                is="#[MunitTools::equalTo(2)]"
+                message="Expected quantity to be 2"
+                doc:name="Assert Quantity"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.unitPrice]"
+                is="#[MunitTools::equalTo(29.99)]"
+                message="Expected unitPrice to be 29.99"
+                doc:name="Assert Unit Price"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.orderTotal]"
+                is="#[MunitTools::equalTo(59.98)]"
+                message="Expected orderTotal to be 59.98"
+                doc:name="Assert Order Total"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.currency]"
+                is="#[MunitTools::equalTo('USD')]"
+                message="Expected currency to be USD"
+                doc:name="Assert Currency"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.shippingAddressLine1]"
+                is="#[MunitTools::equalTo('123 Main St')]"
+                message="Expected shippingAddressLine1 to match the database result"
+                doc:name="Assert Shipping Address Line 1"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.shippingAddressLine2]"
+                is="#[MunitTools::nullValue()]"
+                message="Expected shippingAddressLine2 to be null"
+                doc:name="Assert Shipping Address Line 2"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.shippingCity]"
+                is="#[MunitTools::equalTo('New York')]"
+                message="Expected shippingCity to be New York"
+                doc:name="Assert Shipping City"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.shippingState]"
+                is="#[MunitTools::equalTo('NY')]"
+                message="Expected shippingState to be NY"
+                doc:name="Assert Shipping State"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.shippingPostalCode]"
+                is="#[MunitTools::equalTo('10001')]"
+                message="Expected shippingPostalCode to be 10001"
+                doc:name="Assert Shipping Postal Code"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.shippingCountry]"
+                is="#[MunitTools::equalTo('USA')]"
+                message="Expected shippingCountry to be USA"
+                doc:name="Assert Shipping Country"/>
+
+            <!-- Confirm that the database select was invoked once. -->
+            <munit-tools:verify-call
+                processor="db:select"
+                times="1"
+                doc:name="Verify Orders Select Called Once">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Select - Orders Table']"/>
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+        </munit:validation>
+
+    </munit:test>
+    
+        <!-- ===========================================================
+         Test Case 07: GET /orders/{orderId} - Order Not Found
+         =========================================================== -->
+
+    <munit:test
+        name="get-order-by-id-not-found-test"
+        description="GET /orders/{orderId}: database returns an empty list and the flow raises APP:ORDER_NOT_FOUND"
+        expectedErrorType="APP:ORDER_NOT_FOUND">
+
+        <munit:behavior>
+
+            <!--
+                Actual processor:
+                db:select
+                doc:name="Select - Orders Table"
+                target="dbSelectResult"
+
+                Empty list represents that the requested order
+                does not exist in the database.
+            -->
+            <munit-tools:mock-when
+                processor="db:select"
+                doc:name="Mock Select Orders Table Empty Result">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Select - Orders Table']"/>
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable
+                            key="#['dbSelectResult']"
+                            value="#[[]]"/>
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+        </munit:behavior>
+
+        <munit:execution>
+
+            <!--
+                Actual flow reads:
+                attributes.uriParams.orderId
+            -->
+            <munit:set-event doc:name="Set Unknown Order ID Event">
+
+                <munit:attributes
+                    value="#[{
+                        uriParams: {
+                            orderId: 'NONEXISTENT_ORDER_ID'
+                        }
+                    }]"
+                    mediaType="application/java"/>
+
+            </munit:set-event>
+
+            <!--
+                Empty dbSelectResult makes the choice condition false.
+                The actual flow then raises APP:ORDER_NOT_FOUND.
+            -->
+            <flow-ref
+                name="get:\orders\(orderId):oms-order-system-api-spec-config"
+                doc:name="Call GET Order by ID Flow"/>
+
+        </munit:execution>
+
+    </munit:test>
+    
+        <!-- ===========================================================
+         Test Case 08: GET /orders/{orderId} - DB Connectivity Error
+         =========================================================== -->
+
+    <munit:test
+        name="get-order-by-id-db-connectivity-error-test"
+        description="GET /orders/{orderId}: the order database select throws DB:CONNECTIVITY"
+        expectedErrorType="DB:CONNECTIVITY">
+
+        <munit:behavior>
+
+            <!--
+                Actual processor:
+                db:select
+                doc:name="Select - Orders Table"
+                target="dbSelectResult"
+
+                The mock raises DB:CONNECTIVITY without using the
+                unsupported description attribute.
+            -->
+            <munit-tools:mock-when
+                processor="db:select"
+                doc:name="Mock Orders Select DB Connectivity Error">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Select - Orders Table']"/>
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+                    <munit-tools:error typeId="DB:CONNECTIVITY"/>
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+        </munit:behavior>
+
+        <munit:execution>
+
+            <!--
+                The actual flow reads:
+                attributes.uriParams.orderId
+            -->
+            <munit:set-event doc:name="Set GET Order DB Error Event">
+
+                <munit:attributes
+                    value="#[{
+                        uriParams: {
+                            orderId: 'ORD20261010120000008'
+                        }
+                    }]"
+                    mediaType="application/java"/>
+
+            </munit:set-event>
+
+            <!--
+                The mocked Select - Orders Table processor throws
+                DB:CONNECTIVITY. The test expects this exact error.
+            -->
+            <flow-ref
+                name="get:\orders\(orderId):oms-order-system-api-spec-config"
+                doc:name="Call GET Order by ID Flow"/>
+
+        </munit:execution>
+
+    </munit:test>
+    
+        <!-- ===========================================================
+         Test Case 09: PATCH /orders/{orderId} - Success
+         =========================================================== -->
+
+    <munit:test
+        name="patch-order-success-test"
+        description="PATCH /orders/{orderId} success: order exists, database update executes, and success response is returned">
+
+        <munit:behavior>
+
+            <!--
+                Actual processor:
+                db:select
+                doc:name="Select - Check Order Exists"
+                target="dbCheckResult"
+
+                The flow checks:
+                sizeOf(vars.dbCheckResult default []) > 0
+
+                Returning one record sends execution into the
+                successful update branch.
+            -->
+            <munit-tools:mock-when
+                processor="db:select"
+                doc:name="Mock Check Order Exists Success">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Select - Check Order Exists']"/>
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable
+                            key="#['dbCheckResult']"
+                            value="#[[{
+                                ORDER_ID: 'ORD20261010120000001'
+                            }]]"/>
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+            <!--
+                Actual processor:
+                db:update
+                doc:name="Update - Orders Table"
+                target="dbUpdateResult"
+
+                The current flow does not read dbUpdateResult after
+                the update. The target variable is still returned
+                to match the actual component configuration.
+            -->
+            <munit-tools:mock-when
+                processor="db:update"
+                doc:name="Mock Update Orders Table Success">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Update - Orders Table']"/>
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable
+                            key="#['dbUpdateResult']"
+                            value="#[1]"/>
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+        </munit:behavior>
+
+        <munit:execution>
+
+            <!--
+                The PATCH flow reads:
+                attributes.uriParams.orderId
+
+                It also reads these optional fields from the payload:
+                customerName
+                customerEmail
+                orderStatus
+                shippingAddressLine1
+                shippingAddressLine2
+                shippingCity
+                shippingState
+                shippingPostalCode
+                shippingCountry
+            -->
+            <munit:set-event doc:name="Set PATCH Order Request Event">
+
+                <munit:payload
+                    value="#[output application/json
+                    ---
+                    {
+                        orderStatus: 'SHIPPED',
+                        customerName: 'John Doe Updated'
+                    }]"
+                    mediaType="application/json"
+                    encoding="UTF-8"/>
+
+                <munit:attributes
+                    value="#[{
+                        uriParams: {
+                            orderId: 'ORD20261010120000001'
+                        }
+                    }]"
+                    mediaType="application/java"/>
+
+            </munit:set-event>
+
+            <flow-ref
+                name="patch:\orders\(orderId):application\json:oms-order-system-api-spec-config"
+                doc:name="Call PATCH Order Flow"/>
+
+        </munit:execution>
+
+        <munit:validation>
+
+            <!--
+                The flow stores the URI parameter in vars.orderId.
+            -->
+            <munit-tools:assert-that
+                expression="#[vars.orderId]"
+                is="#[MunitTools::equalTo('ORD20261010120000001')]"
+                message="Expected vars.orderId to match the PATCH URI parameter"
+                doc:name="Assert Order ID Variable"/>
+
+            <!-- Validate the exact success response from the flow. -->
+            <munit-tools:assert-that
+                expression="#[payload.status]"
+                is="#[MunitTools::equalTo('SUCCESS')]"
+                message="Expected response status to be SUCCESS"
+                doc:name="Assert Status SUCCESS"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.message]"
+                is="#[MunitTools::equalTo('Order updated successfully')]"
+                message="Expected order-updated success message"
+                doc:name="Assert Update Success Message"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.orderId]"
+                is="#[MunitTools::equalTo('ORD20261010120000001')]"
+                message="Expected response orderId to match the updated order"
+                doc:name="Assert Response Order ID"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.correlationId]"
+                is="#[MunitTools::notNullValue()]"
+                message="Expected correlationId to be present"
+                doc:name="Assert Correlation ID Present"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.timestamp]"
+                is="#[MunitTools::notNullValue()]"
+                message="Expected timestamp to be present"
+                doc:name="Assert Timestamp Present"/>
+
+            <!--
+                The existence-check select must execute exactly once.
+            -->
+            <munit-tools:verify-call
+                processor="db:select"
+                times="1"
+                doc:name="Verify Check Order Exists Called Once">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Select - Check Order Exists']"/>
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+            <!--
+                The order update must execute exactly once because
+                the order-exists condition evaluates to true.
+            -->
+            <munit-tools:verify-call
+                processor="db:update"
+                times="1"
+                doc:name="Verify Update Orders Table Called Once">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Update - Orders Table']"/>
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+        </munit:validation>
+
+    </munit:test>
+    
+        <!-- ===========================================================
+         Test Case 10: PATCH /orders/{orderId} - Order Not Found
+         =========================================================== -->
+
+    <munit:test
+        name="patch-order-not-found-test"
+        description="PATCH /orders/{orderId}: database existence check returns an empty list and the flow raises APP:ORDER_NOT_FOUND"
+        expectedErrorType="APP:ORDER_NOT_FOUND">
+
+        <munit:behavior>
+
+            <!--
+                Actual processor:
+                db:select
+                doc:name="Select - Check Order Exists"
+                target="dbCheckResult"
+
+                Returning an empty list makes the order-exists
+                condition evaluate to false.
+            -->
+            <munit-tools:mock-when
+                processor="db:select"
+                doc:name="Mock Check Order Exists Empty Result">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Select - Check Order Exists']"/>
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable
+                            key="#['dbCheckResult']"
+                            value="#[[]]"/>
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+        </munit:behavior>
+
+        <munit:execution>
+
+            <!--
+                Actual flow reads:
+                attributes.uriParams.orderId
+
+                A valid PATCH payload is provided so execution reaches
+                the order-existence check without an input issue.
+            -->
+            <munit:set-event doc:name="Set PATCH Nonexistent Order Event">
+
+                <munit:payload
+                    value="#[output application/json
+                    ---
+                    {
+                        orderStatus: 'CANCELLED'
+                    }]"
+                    mediaType="application/json"
+                    encoding="UTF-8"/>
+
+                <munit:attributes
+                    value="#[{
+                        uriParams: {
+                            orderId: 'NONEXISTENT_ORDER'
+                        }
+                    }]"
+                    mediaType="application/java"/>
+
+            </munit:set-event>
+
+            <!--
+                Empty dbCheckResult makes this actual condition false:
+
+                sizeOf(vars.dbCheckResult default []) > 0
+
+                The flow then raises APP:ORDER_NOT_FOUND.
+            -->
+            <flow-ref
+                name="patch:\orders\(orderId):application\json:oms-order-system-api-spec-config"
+                doc:name="Call PATCH Order Flow"/>
+
+        </munit:execution>
+
+    </munit:test>
+    
+        <!-- ===========================================================
+         Test Case 11: PATCH /orders/{orderId} - DB Connectivity Error
+         =========================================================== -->
+
+    <munit:test
+        name="patch-order-db-connectivity-error-test"
+        description="PATCH /orders/{orderId}: order existence check throws DB:CONNECTIVITY"
+        expectedErrorType="DB:CONNECTIVITY">
+
+        <munit:behavior>
+
+            <!--
+                Actual processor:
+                db:select
+                doc:name="Select - Check Order Exists"
+                target="dbCheckResult"
+
+                The database error occurs during the existence check,
+                before the order update operation.
+            -->
+            <munit-tools:mock-when
+                processor="db:select"
+                doc:name="Mock Order Check DB Connectivity Error">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Select - Check Order Exists']"/>
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+                    <munit-tools:error typeId="DB:CONNECTIVITY"/>
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+        </munit:behavior>
+
+        <munit:execution>
+
+            <!--
+                A valid PATCH payload and URI parameter are provided.
+                The mocked DB select then throws DB:CONNECTIVITY.
+            -->
+            <munit:set-event doc:name="Set PATCH Order DB Error Event">
+
+                <munit:payload
+                    value="#[output application/json
+                    ---
+                    {
+                        orderStatus: 'PROCESSING'
+                    }]"
+                    mediaType="application/json"
+                    encoding="UTF-8"/>
+
+                <munit:attributes
+                    value="#[{
+                        uriParams: {
+                            orderId: 'ORD20261010120000002'
+                        }
+                    }]"
+                    mediaType="application/java"/>
+
+            </munit:set-event>
+
+            <flow-ref
+                name="patch:\orders\(orderId):application\json:oms-order-system-api-spec-config"
+                doc:name="Call PATCH Order Flow"/>
+
+        </munit:execution>
+
+    </munit:test>
+    
+        <!-- ===========================================================
+         Test Case 12: DELETE /orders/{orderId} - Success
+         =========================================================== -->
+
+    <munit:test
+        name="delete-order-success-test"
+        description="DELETE /orders/{orderId} success: database delete affects one row and the flow returns a success response">
+
+        <munit:behavior>
+
+            <!--
+                Actual processor:
+                db:delete
+                doc:name="Delete - Orders Table"
+                target="dbDeleteResult"
+
+                The mock returns 1, representing one deleted row.
+            -->
+            <munit-tools:mock-when
+                processor="db:delete"
+                doc:name="Mock Delete Orders Table Success">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Delete - Orders Table']"/>
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable
+                            key="#['dbDeleteResult']"
+                            value="#[1]"/>
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+        </munit:behavior>
+
+        <munit:execution>
+
+            <!--
+                Actual DELETE flow reads:
+                attributes.uriParams.orderId
+            -->
+            <munit:set-event doc:name="Set DELETE Order Request Event">
+
+                <munit:attributes
+                    value="#[{
+                        uriParams: {
+                            orderId: 'ORD20261010120000001'
+                        }
+                    }]"
+                    mediaType="application/java"/>
+
+            </munit:set-event>
+
+            <flow-ref
+                name="delete:\orders\(orderId):oms-order-system-api-spec-config"
+                doc:name="Call DELETE Order Flow"/>
+
+        </munit:execution>
+
+        <munit:validation>
+
+            <!-- URI parameter is stored in vars.orderId. -->
+            <munit-tools:assert-that
+                expression="#[vars.orderId]"
+                is="#[MunitTools::equalTo('ORD20261010120000001')]"
+                message="Expected vars.orderId to match the DELETE URI parameter"
+                doc:name="Assert Order ID Variable"/>
+
+            <!-- Validate the exact success-response fields. -->
+            <munit-tools:assert-that
+                expression="#[payload.status]"
+                is="#[MunitTools::equalTo('SUCCESS')]"
+                message="Expected response status to be SUCCESS"
+                doc:name="Assert Status SUCCESS"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.message]"
+                is="#[MunitTools::equalTo('Order deleted successfully')]"
+                message="Expected successful order-deletion message"
+                doc:name="Assert Delete Success Message"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.orderId]"
+                is="#[MunitTools::equalTo('ORD20261010120000001')]"
+                message="Expected response orderId to match the deleted order"
+                doc:name="Assert Response Order ID"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.correlationId]"
+                is="#[MunitTools::notNullValue()]"
+                message="Expected correlationId to be present"
+                doc:name="Assert Correlation ID Present"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.timestamp]"
+                is="#[MunitTools::notNullValue()]"
+                message="Expected timestamp to be present"
+                doc:name="Assert Timestamp Present"/>
+
+            <!-- Confirm the DELETE operation was invoked once. -->
+            <munit-tools:verify-call
+                processor="db:delete"
+                times="1"
+                doc:name="Verify Delete Orders Table Called Once">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Delete - Orders Table']"/>
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+        </munit:validation>
+
+    </munit:test>
+    
+        <!-- ===========================================================
+         Test Case 13: DELETE /orders/{orderId} - Order Not Found
+         =========================================================== -->
+
+    <munit:test
+        name="delete-order-not-found-test"
+        description="DELETE /orders/{orderId}: database delete affects zero rows and the flow raises APP:ORDER_NOT_FOUND"
+        expectedErrorType="APP:ORDER_NOT_FOUND">
+
+        <munit:behavior>
+
+            <!--
+                Actual processor:
+                db:delete
+                doc:name="Delete - Orders Table"
+                target="dbDeleteResult"
+
+                Returning zero represents that no matching order
+                was found or deleted.
+            -->
+            <munit-tools:mock-when
+                processor="db:delete"
+                doc:name="Mock Delete Orders Table Zero Rows">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Delete - Orders Table']"/>
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable
+                            key="#['dbDeleteResult']"
+                            value="#[0]"/>
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+        </munit:behavior>
+
+        <munit:execution>
+
+            <!--
+                Actual DELETE flow reads:
+                attributes.uriParams.orderId
+            -->
+            <munit:set-event doc:name="Set DELETE Nonexistent Order Event">
+
+                <munit:attributes
+                    value="#[{
+                        uriParams: {
+                            orderId: 'NONEXISTENT_ORDER_ID'
+                        }
+                    }]"
+                    mediaType="application/java"/>
+
+            </munit:set-event>
+
+            <!--
+                dbDeleteResult is zero.
+
+                Actual flow condition becomes:
+
+                (0 == 0) → true
+
+                The flow then raises APP:ORDER_NOT_FOUND.
+            -->
+            <flow-ref
+                name="delete:\orders\(orderId):oms-order-system-api-spec-config"
+                doc:name="Call DELETE Order Flow"/>
+
+        </munit:execution>
+
+    </munit:test>
+    
+        <!-- ===========================================================
+         Test Case 14: DELETE /orders/{orderId} - DB Connectivity Error
+         =========================================================== -->
+
+    <munit:test
+        name="delete-order-db-connectivity-error-test"
+        description="DELETE /orders/{orderId}: database delete throws DB:CONNECTIVITY"
+        expectedErrorType="DB:CONNECTIVITY">
+
+        <munit:behavior>
+
+            <!--
+                Actual processor:
+                db:delete
+                doc:name="Delete - Orders Table"
+                target="dbDeleteResult"
+
+                The database operation is mocked to raise
+                DB:CONNECTIVITY.
+            -->
+            <munit-tools:mock-when
+                processor="db:delete"
+                doc:name="Mock Delete Orders DB Connectivity Error">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Delete - Orders Table']"/>
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+                    <munit-tools:error typeId="DB:CONNECTIVITY"/>
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+        </munit:behavior>
+
+        <munit:execution>
+
+            <!--
+                Actual DELETE flow reads:
+                attributes.uriParams.orderId
+            -->
+            <munit:set-event doc:name="Set DELETE Order DB Error Event">
+
+                <munit:attributes
+                    value="#[{
+                        uriParams: {
+                            orderId: 'ORD20261010120000003'
+                        }
+                    }]"
+                    mediaType="application/java"/>
+
+            </munit:set-event>
+
+            <!--
+                The mocked Delete - Orders Table processor throws
+                DB:CONNECTIVITY.
+
+                The test expects this exact error type.
+            -->
+            <flow-ref
+                name="delete:\orders\(orderId):oms-order-system-api-spec-config"
+                doc:name="Call DELETE Order Flow"/>
+
+        </munit:execution>
+
+    </munit:test>
+    
+        <!-- ===========================================================
+         Test Case 15: GET /products/{productCode} - Success
+         =========================================================== -->
+
+    <munit:test
+        name="get-product-success-test"
+        description="GET /products/{productCode} success: database returns a product and the flow maps it to the expected response">
+
+        <munit:behavior>
+
+            <!--
+                Actual processor:
+                db:select
+                doc:name="Select - Products Table"
+                target="dbProductResult"
+
+                The actual flow reads:
+                vars.dbProductResult[0]
+            -->
+            <munit-tools:mock-when
+                processor="db:select"
+                doc:name="Mock Select Products Table Success">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Select - Products Table']"/>
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable
+                            key="#['dbProductResult']"
+                            value="#[[{
+                                PRODUCT_CODE: 'PROD001',
+                                PRODUCT_NAME: 'Test Widget',
+                                STOCK_QUANTITY: 75,
+                                UNIT_PRICE: 29.99
+                            }]]"/>
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+        </munit:behavior>
+
+        <munit:execution>
+
+            <!--
+                The actual flow reads:
+                attributes.uriParams.productCode
+            -->
+            <munit:set-event doc:name="Set GET Product Request Event">
+
+                <munit:attributes
+                    value="#[{
+                        uriParams: {
+                            productCode: 'PROD001'
+                        }
+                    }]"
+                    mediaType="application/java"/>
+
+            </munit:set-event>
+
+            <flow-ref
+                name="get:\products\(productCode):oms-order-system-api-spec-config"
+                doc:name="Call GET Product Flow"/>
+
+        </munit:execution>
+
+        <munit:validation>
+
+            <!-- URI parameter must be stored in vars.productCode. -->
+            <munit-tools:assert-that
+                expression="#[vars.productCode]"
+                is="#[MunitTools::equalTo('PROD001')]"
+                message="Expected vars.productCode to match the URI parameter"
+                doc:name="Assert Product Code Variable"/>
+
+            <!-- Validate exact response fields from the DataWeave. -->
+            <munit-tools:assert-that
+                expression="#[payload.productCode]"
+                is="#[MunitTools::equalTo('PROD001')]"
+                message="Expected response productCode to be PROD001"
+                doc:name="Assert Response Product Code"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.productName]"
+                is="#[MunitTools::equalTo('Test Widget')]"
+                message="Expected response productName to be Test Widget"
+                doc:name="Assert Product Name"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.stockQuantity]"
+                is="#[MunitTools::equalTo(75)]"
+                message="Expected stockQuantity to be 75"
+                doc:name="Assert Stock Quantity"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.unitPrice]"
+                is="#[MunitTools::equalTo(29.99)]"
+                message="Expected unitPrice to be 29.99"
+                doc:name="Assert Unit Price"/>
+
+            <!-- Product select must execute exactly once. -->
+            <munit-tools:verify-call
+                processor="db:select"
+                times="1"
+                doc:name="Verify Products Select Called Once">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Select - Products Table']"/>
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+        </munit:validation>
+
+    </munit:test>
+    
+        <!-- ===========================================================
+         Test Case 16: GET /products/{productCode} - Product Not Found
+         =========================================================== -->
+
+    <munit:test
+        name="get-product-not-found-test"
+        description="GET /products/{productCode}: database returns an empty list and the flow raises APP:PRODUCT_NOT_FOUND"
+        expectedErrorType="APP:PRODUCT_NOT_FOUND">
+
+        <munit:behavior>
+
+            <!--
+                Actual processor:
+                db:select
+                doc:name="Select - Products Table"
+                target="dbProductResult"
+
+                Empty list represents a nonexistent product.
+            -->
+            <munit-tools:mock-when
+                processor="db:select"
+                doc:name="Mock Products Table Empty Result">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Select - Products Table']"/>
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable
+                            key="#['dbProductResult']"
+                            value="#[[]]"/>
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+        </munit:behavior>
+
+        <munit:execution>
+
+            <!-- The flow reads attributes.uriParams.productCode. -->
+            <munit:set-event doc:name="Set Unknown Product Request Event">
+
+                <munit:attributes
+                    value="#[{
+                        uriParams: {
+                            productCode: 'UNKNOWN_PRODUCT'
+                        }
+                    }]"
+                    mediaType="application/java"/>
+
+            </munit:set-event>
+
+            <!--
+                Empty dbProductResult makes this condition false:
+
+                sizeOf(vars.dbProductResult default []) > 0
+
+                The actual flow then raises APP:PRODUCT_NOT_FOUND.
+            -->
+            <flow-ref
+                name="get:\products\(productCode):oms-order-system-api-spec-config"
+                doc:name="Call GET Product Flow"/>
+
+        </munit:execution>
+
+    </munit:test>
+    
+        <!-- ===========================================================
+         Test Case 18: PATCH /products/{productCode}/stock - ADD Success
+         =========================================================== -->
+
+    <munit:test
+        name="patch-product-stock-add-success-test"
+        description="PATCH /products/{productCode}/stock ADD success: database update affects one row and the flow returns a successful stock-update response">
+
+        <munit:behavior>
+
+            <!--
+                Actual processor:
+                db:update
+                doc:name="Update - Increase Stock"
+                target="dbStockResult"
+
+                The flow later reads:
+                vars.dbStockResult.affectedRows
+
+                Therefore, the mock must return an object containing
+                the affectedRows property.
+            -->
+            <munit-tools:mock-when
+                processor="db:update"
+                doc:name="Mock Increase Stock Success">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Update - Increase Stock']"/>
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable
+                            key="#['dbStockResult']"
+                            value="#[{
+                                affectedRows: 1
+                            }]"/>
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+        </munit:behavior>
+
+        <munit:execution>
+
+            <!--
+                Actual flow reads:
+                attributes.uriParams.productCode
+
+                It stores the complete request payload in:
+                vars.stockPayload
+            -->
+            <munit:set-event doc:name="Set PATCH Stock ADD Event">
+
+                <munit:payload
+                    value="#[output application/json
+                    ---
+                    {
+                        action: 'ADD',
+                        quantity: 20
+                    }]"
+                    mediaType="application/json"
+                    encoding="UTF-8"/>
+
+                <munit:attributes
+                    value="#[{
+                        uriParams: {
+                            productCode: 'PROD001'
+                        }
+                    }]"
+                    mediaType="application/java"/>
+
+            </munit:set-event>
+
+            <flow-ref
+                name="patch:\products\(productCode)\stock:application\json:oms-order-system-api-spec-config"
+                doc:name="Call PATCH Product Stock Flow"/>
+
+        </munit:execution>
+
+        <munit:validation>
+
+            <!-- URI parameter must be stored in vars.productCode. -->
+            <munit-tools:assert-that
+                expression="#[vars.productCode]"
+                is="#[MunitTools::equalTo('PROD001')]"
+                message="Expected vars.productCode to be PROD001"
+                doc:name="Assert Product Code Variable"/>
+
+            <!-- Request payload must be preserved in vars.stockPayload. -->
+            <munit-tools:assert-that
+                expression="#[vars.stockPayload.action]"
+                is="#[MunitTools::equalTo('ADD')]"
+                message="Expected vars.stockPayload.action to be ADD"
+                doc:name="Assert Stock Payload Action"/>
+
+            <munit-tools:assert-that
+                expression="#[vars.stockPayload.quantity]"
+                is="#[MunitTools::equalTo(20)]"
+                message="Expected vars.stockPayload.quantity to be 20"
+                doc:name="Assert Stock Payload Quantity"/>
+
+            <!-- Validate actual response fields. -->
+            <munit-tools:assert-that
+                expression="#[payload.status]"
+                is="#[MunitTools::equalTo('SUCCESS')]"
+                message="Expected response status to be SUCCESS"
+                doc:name="Assert Status SUCCESS"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.message]"
+                is="#[MunitTools::equalTo('Product stock updated successfully')]"
+                message="Expected successful product-stock update message"
+                doc:name="Assert Stock Update Message"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.productCode]"
+                is="#[MunitTools::equalTo('PROD001')]"
+                message="Expected response productCode to be PROD001"
+                doc:name="Assert Response Product Code"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.action]"
+                is="#[MunitTools::equalTo('ADD')]"
+                message="Expected response action to be ADD"
+                doc:name="Assert Response Action ADD"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.quantityChanged]"
+                is="#[MunitTools::equalTo(20)]"
+                message="Expected quantityChanged to be 20"
+                doc:name="Assert Quantity Changed"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.timestamp]"
+                is="#[MunitTools::notNullValue()]"
+                message="Expected timestamp to be present"
+                doc:name="Assert Timestamp Present"/>
+
+            <!-- Confirm the ADD update operation was called once. -->
+            <munit-tools:verify-call
+                processor="db:update"
+                times="1"
+                doc:name="Verify Increase Stock Called Once">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Update - Increase Stock']"/>
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+            <!-- Confirm the DEDUCT update branch was not called. -->
+            <munit-tools:verify-call
+                processor="db:update"
+                times="0"
+                doc:name="Verify Deduct Stock Not Called">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Update - Deduct Stock']"/>
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+        </munit:validation>
+
+    </munit:test>
+        <!-- ===========================================================
+         Test Case 19:
+         PATCH /products/{productCode}/stock - DEDUCT Success
+         =========================================================== -->
+
+    <munit:test
+        name="patch-product-stock-deduct-success-test"
+        description="PATCH product stock DEDUCT success: database update affects one row and the flow returns a successful response">
+
+        <munit:behavior>
+
+            <!--
+                Actual processor:
+                db:update
+                doc:name="Update - Deduct Stock"
+                target="dbStockResult"
+
+                The flow later reads:
+                vars.dbStockResult.affectedRows
+
+                Therefore, the mock must return an object containing:
+                affectedRows: 1
+            -->
+            <munit-tools:mock-when
+                processor="db:update"
+                doc:name="Mock Deduct Stock Success">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Update - Deduct Stock']"/>
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable
+                            key="#['dbStockResult']"
+                            value="#[{
+                                affectedRows: 1
+                            }]"/>
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+        </munit:behavior>
+
+        <munit:execution>
+
+            <!--
+                Actual flow stores:
+                attributes.uriParams.productCode -> vars.productCode
+                payload -> vars.stockPayload
+            -->
+            <munit:set-event doc:name="Set PATCH Stock DEDUCT Event">
+
+                <munit:payload
+                    value="#[output application/json
+                    ---
+                    {
+                        action: 'DEDUCT',
+                        quantity: 5
+                    }]"
+                    mediaType="application/json"
+                    encoding="UTF-8"/>
+
+                <munit:attributes
+                    value="#[{
+                        uriParams: {
+                            productCode: 'PROD001'
+                        }
+                    }]"
+                    mediaType="application/java"/>
+
+            </munit:set-event>
+
+            <flow-ref
+                name="patch:\products\(productCode)\stock:application\json:oms-order-system-api-spec-config"
+                doc:name="Call PATCH Product Stock Flow"/>
+
+        </munit:execution>
+
+        <munit:validation>
+
+            <!-- Validate variables created by the actual flow. -->
+            <munit-tools:assert-that
+                expression="#[vars.productCode]"
+                is="#[MunitTools::equalTo('PROD001')]"
+                message="Expected vars.productCode to be PROD001"
+                doc:name="Assert Product Code Variable"/>
+
+            <munit-tools:assert-that
+                expression="#[vars.stockPayload.action]"
+                is="#[MunitTools::equalTo('DEDUCT')]"
+                message="Expected stock action to be DEDUCT"
+                doc:name="Assert Stock Payload Action"/>
+
+            <munit-tools:assert-that
+                expression="#[vars.stockPayload.quantity]"
+                is="#[MunitTools::equalTo(5)]"
+                message="Expected stock quantity to be 5"
+                doc:name="Assert Stock Payload Quantity"/>
+
+            <!-- Validate exact success-response fields. -->
+            <munit-tools:assert-that
+                expression="#[payload.status]"
+                is="#[MunitTools::equalTo('SUCCESS')]"
+                message="Expected response status to be SUCCESS"
+                doc:name="Assert Status Success"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.message]"
+                is="#[MunitTools::equalTo('Product stock updated successfully')]"
+                message="Expected successful stock-update message"
+                doc:name="Assert Stock Update Message"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.productCode]"
+                is="#[MunitTools::equalTo('PROD001')]"
+                message="Expected response productCode to be PROD001"
+                doc:name="Assert Response Product Code"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.action]"
+                is="#[MunitTools::equalTo('DEDUCT')]"
+                message="Expected response action to be DEDUCT"
+                doc:name="Assert Response Action Deduct"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.quantityChanged]"
+                is="#[MunitTools::equalTo(5)]"
+                message="Expected quantityChanged to be 5"
+                doc:name="Assert Quantity Changed"/>
+
+            <munit-tools:assert-that
+                expression="#[payload.timestamp]"
+                is="#[MunitTools::notNullValue()]"
+                message="Expected timestamp to be present"
+                doc:name="Assert Timestamp Present"/>
+
+            <!-- DEDUCT branch must execute exactly once. -->
+            <munit-tools:verify-call
+                processor="db:update"
+                times="1"
+                doc:name="Verify Deduct Stock Called Once">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Update - Deduct Stock']"/>
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+            <!-- ADD branch must not execute. -->
+            <munit-tools:verify-call
+                processor="db:update"
+                times="0"
+                doc:name="Verify Increase Stock Not Called">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Update - Increase Stock']"/>
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+        </munit:validation>
+
+    </munit:test>
+    
+        <!-- ===========================================================
+         Test Case 20:
+         PATCH /products/{productCode}/stock
+         ADD - Product Not Found
+         =========================================================== -->
+
+    <munit:test
+        name="patch-product-stock-add-product-not-found-test"
+        description="PATCH product stock ADD failure: database update affects zero rows and validation raises VALIDATION:INVALID_BOOLEAN"
+        expectedErrorType="VALIDATION:INVALID_BOOLEAN">
+
+        <munit:behavior>
+
+            <!--
+                Actual processor:
+                db:update
+                doc:name="Update - Increase Stock"
+                target="dbStockResult"
+
+                The actual flow later evaluates:
+                vars.dbStockResult.affectedRows > 0
+
+                Returning affectedRows: 0 causes that validation
+                condition to evaluate to false.
+            -->
+            <munit-tools:mock-when
+                processor="db:update"
+                doc:name="Mock Increase Stock Zero Rows">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Update - Increase Stock']"/>
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable
+                            key="#['dbStockResult']"
+                            value="#[{
+                                affectedRows: 0
+                            }]"/>
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+        </munit:behavior>
+
+        <munit:execution>
+
+            <!--
+                Actual flow reads:
+                attributes.uriParams.productCode
+
+                Actual flow stores:
+                payload -> vars.stockPayload
+            -->
+            <munit:set-event doc:name="Set PATCH Stock ADD Unknown Product Event">
+
+                <munit:payload
+                    value="#[output application/json
+                    ---
+                    {
+                        action: 'ADD',
+                        quantity: 10
+                    }]"
+                    mediaType="application/json"
+                    encoding="UTF-8"/>
+
+                <munit:attributes
+                    value="#[{
+                        uriParams: {
+                            productCode: 'NONEXISTENT_PRODUCT'
+                        }
+                    }]"
+                    mediaType="application/java"/>
+
+            </munit:set-event>
+
+            <!--
+                Execution sequence:
+
+                1. action ADD selects Update - Increase Stock.
+                2. Mock returns affectedRows: 0.
+                3. validation:is-true evaluates false.
+                4. VALIDATION:INVALID_BOOLEAN is raised.
+            -->
+            <flow-ref
+                name="patch:\products\(productCode)\stock:application\json:oms-order-system-api-spec-config"
+                doc:name="Call PATCH Product Stock Flow"/>
+
+        </munit:execution>
+
+    </munit:test>
+    
+        <!-- ===========================================================
+         Test Case 21:
+         PATCH /products/{productCode}/stock
+         DEDUCT - Product Not Found or Insufficient Stock
+         =========================================================== -->
+
+    <munit:test
+        name="patch-product-stock-deduct-product-not-found-test"
+        description="PATCH product stock DEDUCT failure: database update affects zero rows and validation raises VALIDATION:INVALID_BOOLEAN"
+        expectedErrorType="VALIDATION:INVALID_BOOLEAN">
+
+        <munit:behavior>
+
+            <!--
+                Actual processor:
+                db:update
+                doc:name="Update - Deduct Stock"
+                target="dbStockResult"
+
+                The actual SQL updates a row only when:
+                1. PRODUCT_CODE exists
+                2. STOCK_QUANTITY >= requested quantity
+
+                affectedRows: 0 therefore represents either:
+                - a nonexistent product, or
+                - insufficient available stock.
+            -->
+            <munit-tools:mock-when
+                processor="db:update"
+                doc:name="Mock Deduct Stock Zero Rows">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['doc:name']"
+                        whereValue="#['Update - Deduct Stock']"/>
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable
+                            key="#['dbStockResult']"
+                            value="#[{
+                                affectedRows: 0
+                            }]"/>
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+        </munit:behavior>
+
+        <munit:execution>
+
+            <!--
+                Actual flow stores:
+                attributes.uriParams.productCode -> vars.productCode
+                payload -> vars.stockPayload
+            -->
+            <munit:set-event doc:name="Set PATCH Stock DEDUCT Failure Event">
+
+                <munit:payload
+                    value="#[output application/json
+                    ---
+                    {
+                        action: 'DEDUCT',
+                        quantity: 999
+                    }]"
+                    mediaType="application/json"
+                    encoding="UTF-8"/>
+
+                <munit:attributes
+                    value="#[{
+                        uriParams: {
+                            productCode: 'NONEXISTENT_PRODUCT'
+                        }
+                    }]"
+                    mediaType="application/java"/>
+
+            </munit:set-event>
+
+            <!--
+                Execution sequence:
+
+                1. DEDUCT does not match the ADD condition.
+                2. The choice executes its otherwise branch.
+                3. Update - Deduct Stock returns affectedRows: 0.
+                4. Validate Product Exists evaluates 0 > 0 as false.
+                5. VALIDATION:INVALID_BOOLEAN is raised.
+            -->
+            <flow-ref
+                name="patch:\products\(productCode)\stock:application\json:oms-order-system-api-spec-config"
+                doc:name="Call PATCH Product Stock Flow"/>
+
+        </munit:execution>
+
+    </munit:test>
+    
+        <!-- ===========================================================
+         Test Case 22:
+         APIKit Router - BAD_REQUEST Error Handler
+         =========================================================== -->
+
+    <munit:test
+        name="apikit-router-bad-request-error-test"
+        description="APIKit router throws APIKIT:BAD_REQUEST and the main flow executes its Bad Request error handler"
+        expectedErrorType="APIKIT:BAD_REQUEST">
+
+        <munit:behavior>
+
+            <!--
+                Actual processor in omsOrderSystemApiMainFlow:
+
+                apikit:router
+                config-ref="oms-order-system-api-spec-config"
+
+                The router is mocked so that an HTTP listener request
+                is not required for this unit test.
+            -->
+            <munit-tools:mock-when
+                processor="apikit:router"
+                doc:name="Mock APIKit Router Bad Request">
+
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="#['config-ref']"
+                        whereValue="#['oms-order-system-api-spec-config']"/>
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+                    <munit-tools:error typeId="APIKIT:BAD_REQUEST"/>
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+        </munit:behavior>
+
+        <munit:execution>
+
+            <!--
+                A basic JSON event is sufficient because the APIKit
+                router itself is mocked before routing occurs.
+            -->
+            <munit:set-event doc:name="Set APIKit Bad Request Event">
+
+                <munit:payload
+                    value="#[output application/json
+                    ---
+                    {
+                        invalidRequest: true
+                    }]"
+                    mediaType="application/json"
+                    encoding="UTF-8"/>
+
+            </munit:set-event>
+
+            <!--
+                Calls the actual main APIKit flow.
+
+                The HTTP Listener is the message source. When the flow
+                is invoked by flow-ref, processing continues through
+                the flow processors and reaches the mocked APIKit router.
+            -->
+            <flow-ref
+                name="omsOrderSystemApiMainFlow"
+                doc:name="Call Main APIKit Flow"/>
+
+        </munit:execution>
+
+    </munit:test>
+    
+    
+    <!-- ===========================================================
+     APIKit Router - NOT_FOUND Error Handler
+     =========================================================== -->
+
+	<munit:test
+    name="apikit-router-not-found-error-test"
+    description="APIKit router throws APIKIT:NOT_FOUND and covers the Resource Not Found error handler"
+    expectedErrorType="APIKIT:NOT_FOUND">
+
+    <munit:behavior>
+
+        <munit-tools:mock-when
+            processor="apikit:router"
+            doc:name="Mock APIKit Router Not Found">
+
+            <munit-tools:then-return>
+                <munit-tools:error typeId="APIKIT:NOT_FOUND"/>
+            </munit-tools:then-return>
+
+        </munit-tools:mock-when>
+
+    </munit:behavior>
+
+    <munit:execution>
+
+        <munit:set-event doc:name="Set APIKit Not Found Event">
+
+            <munit:payload
+                value="#[output application/json
+                ---
+                {}]"
+                mediaType="application/json"
+                encoding="UTF-8"/>
+
+        </munit:set-event>
+
+        <flow-ref
+            name="omsOrderSystemApiMainFlow"
+            doc:name="Call Main APIKit Flow"/>
+
+    </munit:execution>
+
+	</munit:test>
+	
+		<!-- ===========================================================
+     APIKit Router - METHOD_NOT_ALLOWED Error Handler
+     =========================================================== -->
+
+<munit:test
+    name="apikit-router-method-not-allowed-error-test"
+    description="APIKit router throws APIKIT:METHOD_NOT_ALLOWED and covers the Method Not Allowed error handler"
+    expectedErrorType="APIKIT:METHOD_NOT_ALLOWED">
+
+    <munit:behavior>
+
+        <!--
+            Actual processor:
+            apikit:router
+            config-ref="oms-order-system-api-spec-config"
+
+            Only the router is mocked. The actual main-flow
+            error handler remains unmocked and executes normally.
+        -->
+        <munit-tools:mock-when
+            processor="apikit:router"
+            doc:name="Mock APIKit Router Method Not Allowed">
+
+            <munit-tools:then-return>
+                <munit-tools:error typeId="APIKIT:METHOD_NOT_ALLOWED"/>
+            </munit-tools:then-return>
+
+        </munit-tools:mock-when>
+
+    </munit:behavior>
+
+    <munit:execution>
+
+        <!--
+            The APIKit Router itself is mocked, so realistic HTTP
+            Listener attributes are not required for this test.
+        -->
+        <munit:set-event doc:name="Set APIKit Method Not Allowed Event">
+
+            <munit:payload
+                value="#[output application/json
+                ---
+                {}]"
+                mediaType="application/json"
+                encoding="UTF-8"/>
+
+        </munit:set-event>
+
+        <flow-ref
+            name="omsOrderSystemApiMainFlow"
+            doc:name="Call Main APIKit Flow"/>
+
+    </munit:execution>
+
+	</munit:test>
+	
+	
+	    <!-- ===========================================================
+         APIKit Router - NOT_ACCEPTABLE Error Handler
+         Covers HTTP 406 error transformation
+         =========================================================== -->
+
+    <munit:test
+        name="apikit-router-not-acceptable-error-test"
+        description="APIKit router throws APIKIT:NOT_ACCEPTABLE and covers the Not Acceptable error handler"
+        expectedErrorType="APIKIT:NOT_ACCEPTABLE">
+
+        <munit:behavior>
+
+            <munit-tools:mock-when
+                processor="apikit:router"
+                doc:name="Mock APIKit Router Not Acceptable">
+
+                <munit-tools:then-return>
+                    <munit-tools:error typeId="APIKIT:NOT_ACCEPTABLE"/>
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+        </munit:behavior>
+
+        <munit:execution>
+
+            <munit:set-event doc:name="Set APIKit Not Acceptable Event">
+
+                <munit:payload
+                    value="#[output application/json --- {}]"
+                    mediaType="application/json"
+                    encoding="UTF-8"/>
+
+            </munit:set-event>
+
+            <flow-ref
+                name="omsOrderSystemApiMainFlow"
+                doc:name="Call Main APIKit Flow"/>
+
+        </munit:execution>
+
+    </munit:test>
+    
+        <!-- ===========================================================
+         APIKit Router - UNSUPPORTED_MEDIA_TYPE Error Handler
+         Covers HTTP 415 error transformation
+         =========================================================== -->
+
+    <munit:test
+        name="apikit-router-unsupported-media-type-error-test"
+        description="APIKit router throws APIKIT:UNSUPPORTED_MEDIA_TYPE and covers the Unsupported Media Type error handler"
+        expectedErrorType="APIKIT:UNSUPPORTED_MEDIA_TYPE">
+
+        <munit:behavior>
+
+            <munit-tools:mock-when
+                processor="apikit:router"
+                doc:name="Mock APIKit Router Unsupported Media Type">
+
+                <munit-tools:then-return>
+                    <munit-tools:error typeId="APIKIT:UNSUPPORTED_MEDIA_TYPE"/>
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+        </munit:behavior>
+
+        <munit:execution>
+
+            <munit:set-event doc:name="Set APIKit Unsupported Media Type Event">
+
+                <munit:payload
+                    value="#[output application/json --- {}]"
+                    mediaType="application/json"
+                    encoding="UTF-8"/>
+
+            </munit:set-event>
+
+            <flow-ref
+                name="omsOrderSystemApiMainFlow"
+                doc:name="Call Main APIKit Flow"/>
+
+        </munit:execution>
+
+    </munit:test>
+    
+        <!-- ===========================================================
+         APIKit Router - NOT_IMPLEMENTED Error Handler
+         Covers HTTP 501 error transformation
+         =========================================================== -->
+
+    <munit:test
+        name="apikit-router-not-implemented-error-test"
+        description="APIKit router throws APIKIT:NOT_IMPLEMENTED and covers the Not Implemented error handler"
+        expectedErrorType="APIKIT:NOT_IMPLEMENTED">
+
+        <munit:behavior>
+
+            <munit-tools:mock-when
+                processor="apikit:router"
+                doc:name="Mock APIKit Router Not Implemented">
+
+                <munit-tools:then-return>
+                    <munit-tools:error typeId="APIKIT:NOT_IMPLEMENTED"/>
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+        </munit:behavior>
+
+        <munit:execution>
+
+            <munit:set-event doc:name="Set APIKit Not Implemented Event">
+
+                <munit:payload
+                    value="#[output application/json --- {}]"
+                    mediaType="application/json"
+                    encoding="UTF-8"/>
+
+            </munit:set-event>
+
+            <flow-ref
+                name="omsOrderSystemApiMainFlow"
+                doc:name="Call Main APIKit Flow"/>
+
+        </munit:execution>
+
+    </munit:test>
+    
+        <!-- ===========================================================
+         GlobalErrorHandler - EXPRESSION Error
+         =========================================================== -->
+
+    <munit:test
+        name="global-error-handler-expression-error-test"
+        description="PATCH stock request with missing action causes EXPRESSION and covers the GlobalErrorHandler expression-error branch"
+        expectedErrorType="EXPRESSION">
+
+        <munit:execution>
+
+            <!--
+                The action field is intentionally missing.
+
+                Actual flow evaluates:
+                upper(vars.stockPayload.action) == 'ADD'
+
+                Accessing and converting the missing action triggers
+                an EXPRESSION error.
+            -->
+            <munit:set-event doc:name="Set Missing Stock Action Event">
+
+                <munit:payload
+                    value="#[output application/json
+                    ---
+                    {
+                        quantity: 10
+                    }]"
+                    mediaType="application/json"
+                    encoding="UTF-8"/>
+
+                <munit:attributes
+                    value="#[{
+                        uriParams: {
+                            productCode: 'PROD001'
+                        }
+                    }]"
+                    mediaType="application/java"/>
+
+            </munit:set-event>
+
+            <flow-ref
+                name="patch:\products\(productCode)\stock:application\json:oms-order-system-api-spec-config"
+                doc:name="Call PATCH Product Stock Flow"/>
+
+        </munit:execution>
+
+    </munit:test>
+
+</mule>

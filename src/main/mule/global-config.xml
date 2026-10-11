@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:secure-properties="http://www.mulesoft.org/schema/mule/secure-properties" 
+	xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+	xsi:schemaLocation="
+		http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+		http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+		http://www.mulesoft.org/schema/mule/secure-properties http://www.mulesoft.org/schema/mule/secure-properties/current/mule-secure-properties.xsd">
+
+	<!-- Configuration Properties for active environment -->
+	<configuration-properties doc:name="Configuration properties" doc:id="08d903c8-62ac-4b88-86d2-9bf83021fbc2" file="config/config-${mule.env}.yaml" />
+	
+	<!-- MySQL Database Connection Config -->
+	<!-- Set Global Default Error Handler -->
+	<configuration doc:name="Configuration" doc:id="e98359f3-3474-4995-8e91-e16d4b685439" defaultErrorHandler-ref="GlobalErrorHandler" />
+	
+	<!-- Fallback default properties for Studio / GUI Test Connection -->
+	<global-property doc:name="Global Property" name="mule.env" value="dev" />
+	<global-property doc:name="Global Property" name="runtime.key" value="naveen123" />
+	
+	<!-- Secure Properties Config -->
+	<secure-properties:config name="Secure_Properties_Config" doc:name="Secure Properties Config" doc:id="61251646-236e-4f22-8db8-c03881a4fe12" file="config/secure-${mule.env}.yaml" key="${runtime.key}" >
+		<secure-properties:encrypt algorithm="Blowfish" mode="CBC" />
+	</secure-properties:config>
+	<db:config name="DatabaseConfig" doc:name="DatabaseConfig" doc:id="3a5f37b3-fde2-4eab-bb02-2cadce5f4d40" >
+		<db:my-sql-connection host="${db.host}" port="${db.port}" user="${db.user}" password="${secure::db.password}" database="${db.database}" />
+	</db:config>
+
+</mule>

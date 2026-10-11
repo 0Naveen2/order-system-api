@@ -1,0 +1,316 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:validation="http://www.mulesoft.org/schema/mule/validation"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
+
+    <!-- POST /orders Flow -->
+    <flow name="post:\orders:application\json:oms-order-system-api-spec-config">
+        <set-variable value="#['ORD' ++ (now() as String {format: 'yyyyMMddHHmmssSSS'})]" doc:name="Set Variable - autoOrderId" variableName="orderId" />
+        <set-variable value="#[payload]" doc:name="Set Variable - orderPayload" variableName="orderPayload" />
+        <logger level="INFO" doc:name="Log - Start Post Order" message="#[&quot;Processing POST order request. Generated Order ID: &quot; ++ vars.orderId]" />
+        <db:select doc:name="Select - Fetch Product Details" target="dbProductResult" config-ref="DatabaseConfig">
+            <db:sql><![CDATA[SELECT UNIT_PRICE, STOCK_QUANTITY FROM PRODUCTS WHERE PRODUCT_CODE = :productCode]]></db:sql>
+            <db:input-parameters><![CDATA[#[{ productCode: vars.orderPayload.productCode }]]]></db:input-parameters>
+        </db:select>
+        <choice doc:name="Choice - Valid Product &amp; Stock?">
+            <when expression="#[sizeOf(vars.dbProductResult default []) &gt; 0 and (vars.dbProductResult[0].STOCK_QUANTITY default 0) &gt;= (vars.orderPayload.quantity default 0)]">
+                <set-variable value="#[vars.dbProductResult[0].UNIT_PRICE as Number]" doc:name="Set Variable - fetchedUnitPrice" variableName="fetchedUnitPrice" />
+                <db:update doc:name="Update - Deduct Stock" target="dbStockUpdateResult" config-ref="DatabaseConfig">
+                    <db:sql><![CDATA[UPDATE PRODUCTS 
+SET STOCK_QUANTITY = STOCK_QUANTITY - :quantity,
+    UPDATED_TIMESTAMP = NOW()
+WHERE PRODUCT_CODE = :productCode]]></db:sql>
+                    <db:input-parameters><![CDATA[#[{
+  productCode: vars.orderPayload.productCode,
+  quantity: vars.orderPayload.quantity as Number
+}]]]></db:input-parameters>
+                </db:update>
+                <db:insert doc:name="Insert - Orders Table" target="dbInsertResult" config-ref="DatabaseConfig">
+                    <db:sql><![CDATA[INSERT INTO ORDERS (
+  ORDER_ID, CUSTOMER_ID, CUSTOMER_NAME, CUSTOMER_EMAIL, ORDER_DATE, 
+  ORDER_STATUS, PRODUCT_CODE, QUANTITY, UNIT_PRICE, ORDER_TOTAL, 
+  CURRENCY, SHIPPING_ADDRESS_LINE1, SHIPPING_ADDRESS_LINE2, 
+  SHIPPING_CITY, SHIPPING_STATE, SHIPPING_POSTAL_CODE, SHIPPING_COUNTRY,
+  CREATED_TIMESTAMP, UPDATED_TIMESTAMP, CORRELATION_ID
+) VALUES (
+  :orderId, :customerId, :customerName, :customerEmail, :orderDate, 
+  :orderStatus, :productCode, :quantity, :unitPrice, :orderTotal, 
+  :currency, :shippingAddressLine1, :shippingAddressLine2, 
+  :shippingCity, :shippingState, :shippingPostalCode, :shippingCountry,
+  NOW(), NOW(),
+  :correlationId
+)]]></db:sql>
+                    <db:input-parameters><![CDATA[#[{
+    orderId: vars.orderId,
+    customerId: vars.orderPayload.customerId default null,
+    customerName: vars.orderPayload.customerName,
+    customerEmail: vars.orderPayload.customerEmail,
+    orderDate: vars.orderPayload.orderDate default (now() as String {format: "yyyy-MM-dd"}),
+    orderStatus: vars.orderPayload.orderStatus default "NEW",
+    productCode: vars.orderPayload.productCode,
+    quantity: vars.orderPayload.quantity as Number,
+    unitPrice: vars.fetchedUnitPrice,
+    orderTotal: ((vars.orderPayload.quantity as Number) * vars.fetchedUnitPrice),
+    currency: vars.orderPayload.currency default "USD",
+    shippingAddressLine1: vars.orderPayload.shippingAddressLine1,
+    shippingAddressLine2: vars.orderPayload.shippingAddressLine2 default null,
+    shippingCity: vars.orderPayload.shippingCity,
+    shippingState: vars.orderPayload.shippingState,
+    shippingPostalCode: vars.orderPayload.shippingPostalCode,
+    shippingCountry: vars.orderPayload.shippingCountry,
+    correlationId: correlationId
+}]]]></db:input-parameters>
+                </db:insert>
+                <ee:transform doc:name="Transform - Post Order 201 Response">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status: "SUCCESS",
+  message: "Order created successfully",
+  orderId: vars.orderId,
+  productCode: vars.orderPayload.productCode,
+  quantity: vars.orderPayload.quantity as Number,
+  unitPrice: vars.fetchedUnitPrice,
+  orderTotal: (vars.orderPayload.quantity as Number) * vars.fetchedUnitPrice,
+  correlationId: correlationId,
+  timestamp: now() as String {format: "yyyy-MM-dd'T'HH:mm:ssXXX"}
+}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus"><![CDATA[201]]></ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </when>
+            <otherwise>
+                <raise-error doc:name="Raise Error - Insufficient Stock or Invalid Product" type="APP:INSUFFICIENT_STOCK" description="#[&quot;Invalid product code or insufficient stock for product: &quot; ++ (vars.orderPayload.productCode default &quot;&quot;)]" />
+            </otherwise>
+        </choice>
+        <logger level="INFO" doc:name="Log - End Post Order" message="#[&quot;Completed POST order request for Order ID: &quot; ++ vars.orderId]" />
+    </flow>
+
+    <!-- GET /orders/{orderId} Flow -->
+    <flow name="get:\orders\(orderId):oms-order-system-api-spec-config">
+        <set-variable value="#[attributes.uriParams.orderId default '']" doc:name="Set Variable - orderId" variableName="orderId" />
+        <logger level="INFO" doc:name="Log - Start Get Order" message="#[&quot;Processing GET order request for Order ID: &quot; ++ (vars.orderId default &quot;&quot;)]" />
+        <db:select doc:name="Select - Orders Table" target="dbSelectResult" config-ref="DatabaseConfig">
+            <db:sql><![CDATA[SELECT ORDER_ID, CUSTOMER_ID, CUSTOMER_NAME, CUSTOMER_EMAIL, ORDER_DATE, 
+       ORDER_STATUS, PRODUCT_CODE, QUANTITY, UNIT_PRICE, ORDER_TOTAL, 
+       CURRENCY, SHIPPING_ADDRESS_LINE1, SHIPPING_ADDRESS_LINE2, 
+       SHIPPING_CITY, SHIPPING_STATE, SHIPPING_POSTAL_CODE, SHIPPING_COUNTRY,
+       CREATED_TIMESTAMP, UPDATED_TIMESTAMP 
+FROM ORDERS 
+WHERE ORDER_ID = :orderId]]></db:sql>
+            <db:input-parameters><![CDATA[#[{ orderId: vars.orderId }]]]></db:input-parameters>
+        </db:select>
+        <choice doc:name="Choice - Order Found?">
+            <when expression="#[sizeOf(vars.dbSelectResult default []) &gt; 0]">
+                <ee:transform doc:name="Transform - Get Order Response">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var order = vars.dbSelectResult[0]
+---
+{
+  orderId: order.ORDER_ID,
+  customerId: order.CUSTOMER_ID,
+  customerName: order.CUSTOMER_NAME,
+  customerEmail: order.CUSTOMER_EMAIL,
+  orderDate: if (order.ORDER_DATE != null) (order.ORDER_DATE as String {format: "yyyy-MM-dd"}) else null,
+  orderStatus: order.ORDER_STATUS,
+  productCode: order.PRODUCT_CODE,
+  quantity: order.QUANTITY,
+  unitPrice: order.UNIT_PRICE,
+  orderTotal: order.ORDER_TOTAL,
+  currency: order.CURRENCY,
+  shippingAddressLine1: order.SHIPPING_ADDRESS_LINE1,
+  shippingAddressLine2: order.SHIPPING_ADDRESS_LINE2,
+  shippingCity: order.SHIPPING_CITY,
+  shippingState: order.SHIPPING_STATE,
+  shippingPostalCode: order.SHIPPING_POSTAL_CODE,
+  shippingCountry: order.SHIPPING_COUNTRY
+}]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+                <logger level="INFO" doc:name="Log - End Get Order" message="#[&quot;Completed GET order request for Order ID: &quot; ++ (vars.orderId default &quot;&quot;)]" />
+            </when>
+            <otherwise>
+                <raise-error doc:name="Raise Error - Order Not Found" type="APP:ORDER_NOT_FOUND" description="#[&quot;Order &quot; ++ (vars.orderId default &quot;&quot;) ++ &quot; does not exist&quot;]" />
+            </otherwise>
+        </choice>
+    </flow>
+
+    <!-- PATCH /orders/{orderId} Flow -->
+    <flow name="patch:\orders\(orderId):application\json:oms-order-system-api-spec-config">
+        <set-variable value="#[attributes.uriParams.orderId default '']" doc:name="Set Variable - orderId" variableName="orderId" />
+        <logger level="INFO" doc:name="Log - Start Patch Order" message="#[&quot;Processing PATCH order request for Order ID: &quot; ++ (vars.orderId default &quot;&quot;)]" />
+        <db:select doc:name="Select - Check Order Exists" target="dbCheckResult" config-ref="DatabaseConfig">
+            <db:sql><![CDATA[SELECT ORDER_ID FROM ORDERS WHERE ORDER_ID = :orderId]]></db:sql>
+            <db:input-parameters><![CDATA[#[{ orderId: vars.orderId }]]]></db:input-parameters>
+        </db:select>
+        <choice doc:name="Choice - Order Exists?">
+            <when expression="#[sizeOf(vars.dbCheckResult default []) &gt; 0]">
+                <db:update doc:name="Update - Orders Table" target="dbUpdateResult" config-ref="DatabaseConfig">
+                    <db:sql><![CDATA[UPDATE ORDERS SET 
+  CUSTOMER_NAME = COALESCE(:customerName, CUSTOMER_NAME),
+  CUSTOMER_EMAIL = COALESCE(:customerEmail, CUSTOMER_EMAIL),
+  ORDER_STATUS = COALESCE(:orderStatus, ORDER_STATUS),
+  SHIPPING_ADDRESS_LINE1 = COALESCE(:shippingAddressLine1, SHIPPING_ADDRESS_LINE1),
+  SHIPPING_ADDRESS_LINE2 = COALESCE(:shippingAddressLine2, SHIPPING_ADDRESS_LINE2),
+  SHIPPING_CITY = COALESCE(:shippingCity, SHIPPING_CITY),
+  SHIPPING_STATE = COALESCE(:shippingState, SHIPPING_STATE),
+  SHIPPING_POSTAL_CODE = COALESCE(:shippingPostalCode, SHIPPING_POSTAL_CODE),
+  SHIPPING_COUNTRY = COALESCE(:shippingCountry, SHIPPING_COUNTRY),
+  UPDATED_TIMESTAMP = NOW()
+WHERE ORDER_ID = :orderId]]></db:sql>
+                    <db:input-parameters><![CDATA[#[{
+  orderId: vars.orderId,
+  customerName: payload.customerName default null,
+  customerEmail: payload.customerEmail default null,
+  orderStatus: payload.orderStatus default null,
+  shippingAddressLine1: payload.shippingAddressLine1 default null,
+  shippingAddressLine2: payload.shippingAddressLine2 default null,
+  shippingCity: payload.shippingCity default null,
+  shippingState: payload.shippingState default null,
+  shippingPostalCode: payload.shippingPostalCode default null,
+  shippingCountry: payload.shippingCountry default null
+}]]]></db:input-parameters>
+                </db:update>
+                <ee:transform doc:name="Transform - Patch Order Response">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status: "SUCCESS",
+  message: "Order updated successfully",
+  orderId: vars.orderId,
+  correlationId: correlationId,
+  timestamp: now() as String {format: "yyyy-MM-dd'T'HH:mm:ssXXX"}
+}]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+            </when>
+            <otherwise>
+                <raise-error doc:name="Raise Error - Order Not Found" type="APP:ORDER_NOT_FOUND" description="#[&quot;Order &quot; ++ (vars.orderId default &quot;&quot;) ++ &quot; does not exist&quot;]" />
+            </otherwise>
+        </choice>
+    </flow>
+
+    <!-- DELETE /orders/{orderId} Flow -->
+    <flow name="delete:\orders\(orderId):oms-order-system-api-spec-config">
+        <set-variable value="#[attributes.uriParams.orderId default '']" doc:name="Set Variable - orderId" variableName="orderId" />
+        <logger level="INFO" doc:name="Log - Start Delete Order" message="#[&quot;Processing DELETE order request for Order ID: &quot; ++ (vars.orderId default &quot;&quot;)]" />
+        <db:delete doc:name="Delete - Orders Table" target="dbDeleteResult" config-ref="DatabaseConfig">
+            <db:sql><![CDATA[DELETE FROM ORDERS WHERE ORDER_ID = :orderId]]></db:sql>
+            <db:input-parameters><![CDATA[#[{ orderId: vars.orderId }]]]></db:input-parameters>
+        </db:delete>
+        <choice doc:name="Choice - Row Deleted?">
+            <when expression="#[(vars.dbDeleteResult.affectedRows default vars.dbDeleteResult default 0) == 0]">
+                <raise-error doc:name="Raise Error - Order Not Found" type="APP:ORDER_NOT_FOUND" description="#[&quot;Order &quot; ++ (vars.orderId default &quot;&quot;) ++ &quot; does not exist&quot;]" />
+            </when>
+            <otherwise>
+                <ee:transform doc:name="Transform - Delete Order Response">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status: "SUCCESS",
+  message: "Order deleted successfully",
+  orderId: vars.orderId,
+  correlationId: correlationId,
+  timestamp: now() as String {format: "yyyy-MM-dd'T'HH:mm:ssXXX"}
+}]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+                <logger level="INFO" doc:name="Log - End Delete Order" message="#[&quot;Completed DELETE order request for Order ID: &quot; ++ (vars.orderId default &quot;&quot;)]" />
+            </otherwise>
+        </choice>
+    </flow>
+
+    <!-- GET /products/{productCode} Flow -->
+    <flow name="get:\products\(productCode):oms-order-system-api-spec-config">
+        <set-variable value="#[attributes.uriParams.productCode default '']" doc:name="Set Variable - productCode" variableName="productCode" />
+        <logger level="INFO" doc:name="Log - Start Get Product" message="#[&quot;Processing GET product request for Code: &quot; ++ (vars.productCode default &quot;&quot;)]" />
+        <db:select doc:name="Select - Products Table" target="dbProductResult" config-ref="DatabaseConfig">
+            <db:sql><![CDATA[SELECT PRODUCT_CODE, PRODUCT_NAME, STOCK_QUANTITY, UNIT_PRICE 
+FROM PRODUCTS 
+WHERE PRODUCT_CODE = :productCode]]></db:sql>
+            <db:input-parameters><![CDATA[#[{ productCode: vars.productCode }]]]></db:input-parameters>
+        </db:select>
+        <choice doc:name="Choice - Product Found?">
+            <when expression="#[sizeOf(vars.dbProductResult default []) &gt; 0]">
+                <ee:transform doc:name="Transform - Get Product Response">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var prod = vars.dbProductResult[0]
+---
+{
+  productCode: prod.PRODUCT_CODE,
+  productName: prod.PRODUCT_NAME,
+  stockQuantity: prod.STOCK_QUANTITY,
+  unitPrice: prod.UNIT_PRICE
+}]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+                <logger level="INFO" doc:name="Log - End Get Product" message="#[&quot;Completed GET product request for Code: &quot; ++ (vars.productCode default &quot;&quot;)]" />
+            </when>
+            <otherwise>
+                <raise-error doc:name="Raise Error - Product Not Found" type="APP:PRODUCT_NOT_FOUND" description="#[&quot;Product &quot; ++ (vars.productCode default &quot;&quot;) ++ &quot; does not exist&quot;]" />
+            </otherwise>
+        </choice>
+    </flow>
+
+    <!-- PATCH /products/{productCode}/stock Flow -->
+    <flow name="patch:\products\(productCode)\stock:application\json:oms-order-system-api-spec-config">
+        <set-variable value="#[attributes.uriParams.productCode]" doc:name="Set Variable - productCode" variableName="productCode" />
+        <set-variable value="#[payload]" doc:name="Set Variable - stockPayload" variableName="stockPayload" />
+        <choice doc:name="Choice - Action Type">
+            <when expression="#[upper(vars.stockPayload.action) == 'ADD']">
+                <db:update doc:name="Update - Increase Stock" target="dbStockResult" config-ref="DatabaseConfig">
+                    <db:sql><![CDATA[UPDATE PRODUCTS 
+SET STOCK_QUANTITY = STOCK_QUANTITY + :quantity,
+    UPDATED_TIMESTAMP = NOW()
+WHERE PRODUCT_CODE = :productCode]]></db:sql>
+                    <db:input-parameters><![CDATA[#[{
+    quantity: vars.stockPayload.quantity,
+    productCode: vars.productCode
+}]]]></db:input-parameters>
+                </db:update>
+            </when>
+            <otherwise>
+                <db:update doc:name="Update - Deduct Stock" target="dbStockResult" config-ref="DatabaseConfig">
+                    <db:sql><![CDATA[UPDATE PRODUCTS 
+SET STOCK_QUANTITY = STOCK_QUANTITY - :quantity,
+    UPDATED_TIMESTAMP = NOW()
+WHERE PRODUCT_CODE = :productCode AND STOCK_QUANTITY >= :quantity]]></db:sql>
+                    <db:input-parameters><![CDATA[#[{
+    quantity: vars.stockPayload.quantity,
+    productCode: vars.productCode
+}]]]></db:input-parameters>
+                </db:update>
+            </otherwise>
+        </choice>
+        <logger level="INFO" message="#[write(vars.dbStockResult,'application/json')]" doc:name="Check Update Result"/>
+    	<validation:is-true expression="#[vars.dbStockResult.affectedRows > 0]" message="Product not found" doc:name="Validate Product Exists"/>
+        <ee:transform doc:name="Transform - Patch Response">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status: "SUCCESS",
+  message: "Product stock updated successfully",
+  productCode: vars.productCode,
+  action: upper(vars.stockPayload.action),
+  quantityChanged: vars.stockPayload.quantity,
+  timestamp: now() as String {format: "yyyy-MM-dd'T'HH:mm:ssXXX"}
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </flow>
+
+</mule>

@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+		http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+		http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+	<error-handler name="GlobalErrorHandler" doc:id="5c6ba51f-8d49-4054-a4a8-8b040cbb9b3a">
+	
+		<!-- 1. Business Error: ORDER_NOT_FOUND or PRODUCT_NOT_FOUND (404) -->
+		<on-error-propagate type="APP:ORDER_NOT_FOUND, APP:PRODUCT_NOT_FOUND" enableNotifications="true" logException="true" doc:name="On Error Propagate - Not Found">
+			<set-variable value="404" doc:name="Set HTTP Status 404" variableName="httpStatus"/>
+			<ee:transform doc:name="Transform - Not Found Error">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  correlationId: correlationId default "",
+  orderId: vars.orderId default "",
+  errorCode: error.errorType.identifier default "NOT_FOUND",
+  errorMessage: error.description default "Requested resource does not exist",
+  source: "DATABASE",
+  timestamp: now() as String {format: "yyyy-MM-dd'T'HH:mm:ssXXX"}
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+		</on-error-propagate>
+
+		<!-- 2. Business Error: INSUFFICIENT_STOCK (400) -->
+		<on-error-propagate type="APP:INSUFFICIENT_STOCK" enableNotifications="true" logException="true" doc:name="On Error Propagate - Insufficient Stock">
+			<set-variable value="400" doc:name="Set HTTP Status 400" variableName="httpStatus"/>
+			<ee:transform doc:name="Transform - Insufficient Stock Error">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  correlationId: correlationId default "",
+  orderId: vars.orderId default "",
+  errorCode: "INSUFFICIENT_STOCK",
+  errorMessage: error.description default "Requested quantity exceeds available stock",
+  source: "DATABASE",
+  timestamp: now() as String {format: "yyyy-MM-dd'T'HH:mm:ssXXX"}
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+		</on-error-propagate>
+
+		<!-- 3. Business Error: ORDER_ALREADY_EXISTS (400) -->
+		<on-error-propagate type="DB:QUERY_EXECUTION" enableNotifications="true" logException="true" doc:name="On Error Propagate - Duplicate Order" when='#[(indexOf(error.description default "", "Duplicate") != -1) or (indexOf(error.description default "", "PRIMARY") != -1) or (indexOf(error.description default "", "unique") != -1)]'>
+			<set-variable value="400" doc:name="Set HTTP Status 400" variableName="httpStatus"/>
+			<ee:transform doc:name="Transform - Duplicate Order Error">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  correlationId: correlationId default "",
+  orderId: vars.orderId default payload.orderId default "",
+  errorCode: "ORDER_ALREADY_EXISTS",
+  errorMessage: "Order already exists with ID: " ++ (vars.orderId default payload.orderId default ""),
+  source: "DATABASE",
+  timestamp: now() as String {format: "yyyy-MM-dd'T'HH:mm:ssXXX"}
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+		</on-error-propagate>
+
+		<!-- 4. Input Error: EXPRESSION / Malformed Syntax (400) -->
+		<on-error-propagate type="EXPRESSION" enableNotifications="true" logException="true" doc:name="On Error Propagate - Expression Syntax Error">
+			<set-variable value="400" doc:name="Set HTTP Status 400" variableName="httpStatus"/>
+			<ee:transform doc:name="Transform - Syntax Error">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  correlationId: correlationId default "",
+  orderId: vars.orderId default "",
+  errorCode: "BAD_REQUEST",
+  errorMessage: "Invalid request payload or malformed syntax",
+  source: "API",
+  timestamp: now() as String {format: "yyyy-MM-dd'T'HH:mm:ssXXX"}
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+		</on-error-propagate>
+
+		<!-- 5. Technical Error: Database Connectivity (503) -->
+		<on-error-propagate type="DB:CONNECTIVITY" enableNotifications="true" logException="true" doc:name="On Error Propagate - DB Connectivity">
+			<set-variable value="503" doc:name="Set HTTP Status 503" variableName="httpStatus"/>
+			<ee:transform doc:name="Transform - DB Connectivity Error">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  correlationId: correlationId default "",
+  orderId: vars.orderId default "",
+  errorCode: "DB_CONNECTIVITY_ERROR",
+  errorMessage: "Unable to connect to the orders database",
+  source: "DATABASE",
+  timestamp: now() as String {format: "yyyy-MM-dd'T'HH:mm:ssXXX"}
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+		</on-error-propagate>
+
+		<!-- 6. Technical Error: Database Execution (500) -->
+		<on-error-propagate type="DB:QUERY_EXECUTION, DB:BAD_SQL_SYNTAX" enableNotifications="true" logException="true" doc:name="On Error Propagate - DB Execution">
+			<set-variable value="500" doc:name="Set HTTP Status 500" variableName="httpStatus"/>
+			<ee:transform doc:name="Transform - DB Execution Error">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  correlationId: correlationId default "",
+  orderId: vars.orderId default "",
+  errorCode: "DB_EXECUTION_ERROR",
+  errorMessage: error.description default "Database operation failed to execute",
+  source: "DATABASE",
+  timestamp: now() as String {format: "yyyy-MM-dd'T'HH:mm:ssXXX"}
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+		</on-error-propagate>
+		
+		
+		<!-- 7. Validation Error: Product Not Found (404) -->
+		<on-error-propagate type="VALIDATION:INVALID_BOOLEAN"
+                    enableNotifications="true"
+                    logException="true"
+                    doc:name="On Error Propagate - Product Not Found">
+
+    		<set-variable value="404"
+                  variableName="httpStatus"/>
+
+    		<ee:transform doc:name="Transform - Product Not Found">
+        	<ee:message>
+            <ee:set-payload><![CDATA[
+%dw 2.0
+output application/json
+---
+{
+  correlationId: correlationId default "",
+  orderId: vars.orderId default "",
+  errorCode: "PRODUCT_NOT_FOUND",
+  errorMessage:"Invalid product code",
+  source: "DATABASE",
+  timestamp: now() as String {format: "yyyy-MM-dd'T'HH:mm:ssXXX"}
+}
+]]></ee:set-payload>
+        </ee:message>
+    </ee:transform>
+
+</on-error-propagate>
+
+		<!-- 8. Technical Error: Fallback General Error (500) -->
+		<on-error-propagate type="ANY" enableNotifications="true" logException="true" doc:name="On Error Propagate - General Error">
+			<set-variable value="500" doc:name="Set HTTP Status 500" variableName="httpStatus"/>
+			<ee:transform doc:name="Transform - General Error">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  correlationId: correlationId default "",
+  orderId: vars.orderId default "",
+  errorCode: "INTERNAL_SERVER_ERROR",
+  errorMessage: "An unexpected error occurred",
+  source: "DATABASE",
+  timestamp: now() as String {format: "yyyy-MM-dd'T'HH:mm:ssXXX"}
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+		</on-error-propagate>
+		
+	</error-handler>
+
+</mule>
