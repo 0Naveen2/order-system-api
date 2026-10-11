@@ -61,3 +61,9 @@ jobs:
 
       - name: Package Application
         run: mvn package -DskipMunitTests -s .maven/settings.xml
+
+      - name: Deploy to CloudHub 2.0
+        run: mvn deploy -DskipMunitTests -s .maven/settings.xml
+        env:
+          CONNECTED_APP_CLIENT_ID: ${{ secrets.ANYPOINT_CLIENT_ID }}
+          CONNECTED_APP_CLIENT_SECRET: ${{ secrets.ANYPOINT_CLIENT_SECRET }}
