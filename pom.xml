@@ -79,7 +79,7 @@
             			<connectedAppGrantType>client_credentials</connectedAppGrantType>
             			<applicationName>order-system-api-sapi</applicationName> <!-- Must be globally unique in CH 2.0 -->
             			<replicas>1</replicas>
-            			<vcores>0.1</vcores>
+            			<vCores>0.1</vCores>
             			<skipDeploymentVerification>false</skipDeploymentVerification>
         			</cloudhub2Deployment>
     			</configuration>
