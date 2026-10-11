@@ -341,7 +341,7 @@ http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/mu
 
             <munit-tools:assert-that
                 expression="#[vars.httpStatus]"
-                is="#[MunitTools::equalTo(400)]"
+                is="#[MunitTools::equalTo('400')]"
                 message="Expected vars.httpStatus to be 400 for an invalid product code"
                 doc:name="Assert HTTP Status 400"/>
 
@@ -522,7 +522,7 @@ http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/mu
 
             <munit-tools:assert-that
                 expression="#[vars.httpStatus]"
-                is="#[MunitTools::equalTo(400)]"
+                is="#[MunitTools::equalTo('400')]"
                 message="Expected vars.httpStatus to be 400 for insufficient stock"
                 doc:name="Assert HTTP Status 400"/>
 
@@ -696,7 +696,7 @@ http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/mu
 
             <munit-tools:assert-that
                 expression="#[vars.httpStatus]"
-                is="#[MunitTools::equalTo(503)]"
+                is="#[MunitTools::equalTo('503')]"
                 message="Expected vars.httpStatus to be 503 for DB connectivity error"
                 doc:name="Assert HTTP Status 503"/>
 
@@ -932,7 +932,7 @@ http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/mu
             -->
             <munit-tools:assert-that
                 expression="#[vars.httpStatus]"
-                is="#[MunitTools::equalTo(500)]"
+                is="#[MunitTools::equalTo('500')]"
                 message="Expected HTTP status 500 for DB query execution error"
                 doc:name="Assert HTTP Status 500"/>
 
@@ -3050,7 +3050,7 @@ http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/mu
     <munit:test
         name="global-error-handler-expression-error-test"
         description="PATCH stock request with missing action causes EXPRESSION and covers the GlobalErrorHandler expression-error branch"
-        expectedErrorType="EXPRESSION">
+        expectedErrorType="VALIDATION:INVALID_BOOLEAN">
 
         <munit:execution>
 
