@@ -17,19 +17,23 @@
             <username>~~~Client~~~</username>
             <password>${env.CONNECTED_APP_CLIENT_ID}~?~${env.CONNECTED_APP_CLIENT_SECRET}</password>
         </server>
-
-        <!-- Add these to handle MuleSoft repository authentication -->
-        <server>
-            <id>mulesoft-releases</id>
-            <username>~~~Client~~~</username>
-            <password>${env.CONNECTED_APP_CLIENT_ID}~?~${env.CONNECTED_APP_CLIENT_SECRET}</password>
-        </server>
-        
-        <server>
-            <id>mule-private</id>
-            <username>~~~Client~~~</username>
-            <password>${env.CONNECTED_APP_CLIENT_ID}~?~${env.CONNECTED_APP_CLIENT_SECRET}</password>
-        </server>
     </servers>
+
+    <profiles>
+        <profile>
+            <id>allow-public-repositories</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <repositories>
+                <repository>
+                    <id>central</id>
+                    <url>https://repo.maven.apache.org/maven2</url>
+                    <releases><enabled>true</enabled></releases>
+                    <snapshots><enabled>true</enabled></snapshots>
+                </repository>
+            </repositories>
+        </profile>
+    </profiles>
 
 </settings>
