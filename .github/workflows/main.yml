@@ -45,9 +45,19 @@ jobs:
         run: |
           java -version
           mvn -version
+          
 
       - name: Build Application
         run: mvn clean compile -DskipMunitTests -s .maven/settings.xml
         env:
           CONNECTED_APP_CLIENT_ID: ${{ secrets.ANYPOINT_CLIENT_ID }}
           CONNECTED_APP_CLIENT_SECRET: ${{ secrets.ANYPOINT_CLIENT_SECRET }}
+
+      - name: Run MUnit Tests
+        run: mvn test -s .maven/settings.xml
+        env:
+          CONNECTED_APP_CLIENT_ID: ${{ secrets.ANYPOINT_CLIENT_ID }}
+          CONNECTED_APP_CLIENT_SECRET: ${{ secrets.ANYPOINT_CLIENT_SECRET }}
+
+      - name: Package Application
+        run: mvn package -DskipMunitTests -s .maven/settings.xml
